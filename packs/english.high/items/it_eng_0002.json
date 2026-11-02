@@ -1,0 +1,17 @@
+{
+  "id": "it_eng_0002",
+  "type": "single_choice",
+  "kc_ids": ["kc_eng_0003"],
+  "stem": "I ___ this book twice. It is worth reading again.",
+  "options": [
+    { "key": "A", "text": "read" },
+    { "key": "B", "text": "have read" },
+    { "key": "C", "text": "will read" },
+    { "key": "D", "text": "am reading" }
+  ],
+  "answer": "B",
+  "analysis": "twice（两次经历）+ 对现在的影响（值得再读）→ 现在完成时。A 的 read 过去式拼写相同，是形义陷阱：需靠 have 判断。",
+  "difficulty": 0.5,
+  "origin": { "source_type": "generated", "source_ref": "draft-v1", "redistributable": true },
+  "verification": { "answer_checked_by": "human", "human_reviewed": true }
+}

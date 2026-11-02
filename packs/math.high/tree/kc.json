@@ -1,0 +1,7 @@
+[
+  { "id": "kc_hs_math_0001", "name": "集合的概念与运算", "toc": ["必修一", "第一章", "1.1 集合的概念"], "difficulty": 0.2, "bloom": "理解", "aliases": ["集合"] },
+  { "id": "kc_hs_math_0002", "name": "函数的概念", "toc": ["必修一", "第三章", "3.1 函数的概念及其表示"], "difficulty": 0.4, "bloom": "理解", "aliases": ["函数定义"] },
+  { "id": "kc_hs_math_0003", "name": "函数的单调性", "toc": ["必修一", "第三章", "3.2 函数的基本性质"], "difficulty": 0.5, "bloom": "应用", "aliases": ["单调增减"] },
+  { "id": "kc_hs_math_0004", "name": "指数函数", "toc": ["必修一", "第四章", "4.2 指数函数"], "difficulty": 0.5, "bloom": "应用", "aliases": [] },
+  { "id": "kc_hs_math_0005", "name": "对数函数", "toc": ["必修一", "第四章", "4.4 对数函数"], "difficulty": 0.6, "bloom": "应用", "aliases": ["log"] }
+]

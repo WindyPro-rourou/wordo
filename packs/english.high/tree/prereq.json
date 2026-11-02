@@ -1,0 +1,6 @@
+[
+  { "from": "kc_eng_0001", "to": "kc_eng_0002", "strength": "hard", "reason": "过去时以现在时的时间轴概念为参照" },
+  { "from": "kc_eng_0002", "to": "kc_eng_0003", "strength": "hard", "reason": "完成时=过去动作对现在的影响，需先掌握过去时形态与时间轴" },
+  { "from": "kc_eng_0001", "to": "kc_eng_0004", "strength": "soft", "reason": "定语从句需先有完整句子的概念" },
+  { "from": "kc_eng_0004", "to": "kc_eng_0005", "strength": "soft", "reason": "分词作定语与定语从句可互换，学会从句便于理解分词" }
+]

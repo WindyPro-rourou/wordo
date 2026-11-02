@@ -1,0 +1,17 @@
+{
+  "id": "it_hs_math_0002",
+  "type": "single_choice",
+  "kc_ids": ["kc_hs_math_0003"],
+  "stem": "下列函数在区间 (0,+∞) 上单调递增的是（　）",
+  "options": [
+    { "key": "A", "text": "y = 1/x" },
+    { "key": "B", "text": "y = -x²" },
+    { "key": "C", "text": "y = x² + 1" },
+    { "key": "D", "text": "y = |x - 1|" }
+  ],
+  "answer": "C",
+  "analysis": "x²+1 在 (0,+∞) 上随 x 增大而增大。A 在 (0,+∞) 递减；B 在 (0,+∞) 递减；D 在 (0,1) 递减、(1,+∞) 递增，不单调。",
+  "difficulty": 0.4,
+  "origin": { "source_type": "generated", "source_ref": "draft-v1", "redistributable": true },
+  "verification": { "answer_checked_by": "human", "human_reviewed": true }
+}

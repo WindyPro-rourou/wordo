@@ -1,0 +1,17 @@
+{
+  "id": "it_eng_0003",
+  "type": "single_choice",
+  "kc_ids": ["kc_eng_0004"],
+  "stem": "This is the house ___ roof was damaged in the storm.",
+  "options": [
+    { "key": "A", "text": "which" },
+    { "key": "B", "text": "that" },
+    { "key": "C", "text": "whose" },
+    { "key": "D", "text": "where" }
+  ],
+  "answer": "C",
+  "analysis": "先行词 house 与 roof 是所属关系（house 的 roof）→ 用 whose。which/that 不能接所有格；where 表地点状语。",
+  "difficulty": 0.6,
+  "origin": { "source_type": "generated", "source_ref": "draft-v1", "redistributable": true },
+  "verification": { "answer_checked_by": "human", "human_reviewed": true }
+}

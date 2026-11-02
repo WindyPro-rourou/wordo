@@ -1,0 +1,12 @@
+{
+  "id": "english.high",
+  "name": "高中英语",
+  "version": "0.1.0",
+  "schema": "subject-pack/1",
+  "license": "CC-BY-SA-4.0",
+  "author": "WORDO",
+  "description": "高中英语语法主线（时态→完成时→从句→非谓语）。文科侧试验田。",
+  "depends": [],
+  "language": "zh-CN",
+  "presentation": ["teaching", "qa"]
+}

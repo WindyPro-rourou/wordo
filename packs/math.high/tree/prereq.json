@@ -1,0 +1,6 @@
+[
+  { "from": "kc_hs_math_0001", "to": "kc_hs_math_0002", "strength": "hard", "reason": "函数的定义域与对应关系用集合语言描述" },
+  { "from": "kc_hs_math_0002", "to": "kc_hs_math_0003", "strength": "hard", "reason": "单调性是定义在函数概念之上的性质" },
+  { "from": "kc_hs_math_0002", "to": "kc_hs_math_0004", "strength": "hard", "reason": "指数函数首先是函数，需先掌握函数概念" },
+  { "from": "kc_hs_math_0004", "to": "kc_hs_math_0005", "strength": "soft", "reason": "对数函数与指数函数互为反函数图像对称，类比学习更易" }
+]

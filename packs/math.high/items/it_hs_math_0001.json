@@ -1,0 +1,17 @@
+{
+  "id": "it_hs_math_0001",
+  "type": "single_choice",
+  "kc_ids": ["kc_hs_math_0001"],
+  "stem": "已知集合 A={1,2,3}，B={2,3,4}，则 A∩B=（　）",
+  "options": [
+    { "key": "A", "text": "{2,3}" },
+    { "key": "B", "text": "{1,2,3}" },
+    { "key": "C", "text": "{2,3,4}" },
+    { "key": "D", "text": "{1,2,3,4}" }
+  ],
+  "answer": "A",
+  "analysis": "交集取两集合共有元素：A 与 B 共有 2 和 3，故 A∩B={2,3}。选 B 是并集、C 是 B 本身、D 是并集结果。",
+  "difficulty": 0.2,
+  "origin": { "source_type": "generated", "source_ref": "draft-v1", "redistributable": true },
+  "verification": { "answer_checked_by": "human", "human_reviewed": true }
+}

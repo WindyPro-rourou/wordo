@@ -1,0 +1,17 @@
+{
+  "id": "it_hs_math_0003",
+  "type": "single_choice",
+  "kc_ids": ["kc_hs_math_0004", "kc_hs_math_0005"],
+  "stem": "log₂8 =（　）",
+  "options": [
+    { "key": "A", "text": "2" },
+    { "key": "B", "text": "3" },
+    { "key": "C", "text": "4" },
+    { "key": "D", "text": "8" }
+  ],
+  "answer": "B",
+  "analysis": "log₂8 = log₂2³ = 3。选 D 是把对数当除法（8÷2），属典型误解。",
+  "difficulty": 0.3,
+  "origin": { "source_type": "generated", "source_ref": "draft-v1", "redistributable": true },
+  "verification": { "answer_checked_by": "human", "human_reviewed": true }
+}

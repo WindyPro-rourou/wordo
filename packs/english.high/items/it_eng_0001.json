@@ -1,0 +1,17 @@
+{
+  "id": "it_eng_0001",
+  "type": "single_choice",
+  "kc_ids": ["kc_eng_0002"],
+  "stem": "He ___ to Beijing last year.",
+  "options": [
+    { "key": "A", "text": "goes" },
+    { "key": "B", "text": "went" },
+    { "key": "C", "text": "has gone" },
+    { "key": "D", "text": "will go" }
+  ],
+  "answer": "B",
+  "analysis": "last year 是明确过去时间标志，用一般过去时 went。C（has gone）与具体过去时间连用是经典错误。",
+  "difficulty": 0.3,
+  "origin": { "source_type": "generated", "source_ref": "draft-v1", "redistributable": true },
+  "verification": { "answer_checked_by": "human", "human_reviewed": true }
+}

@@ -1,0 +1,7 @@
+[
+  { "id": "kc_eng_0001", "name": "一般现在时", "toc": ["语法", "动词时态和语态", "一般现在时"], "difficulty": 0.2, "bloom": "理解", "aliases": ["现在时"] },
+  { "id": "kc_eng_0002", "name": "一般过去时", "toc": ["语法", "动词时态和语态", "一般过去时"], "difficulty": 0.3, "bloom": "应用", "aliases": ["过去时"] },
+  { "id": "kc_eng_0003", "name": "现在完成时", "toc": ["语法", "动词时态和语态", "现在完成时"], "difficulty": 0.5, "bloom": "应用", "aliases": ["完成时"] },
+  { "id": "kc_eng_0004", "name": "定语从句", "toc": ["语法", "复合句", "定语从句"], "difficulty": 0.6, "bloom": "应用", "aliases": ["关系从句"] },
+  { "id": "kc_eng_0005", "name": "非谓语动词", "toc": ["语法", "非谓语动词", "不定式/动名词/分词"], "difficulty": 0.7, "bloom": "应用", "aliases": ["to do / doing / done"] }
+]

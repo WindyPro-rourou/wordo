@@ -1,0 +1,12 @@
+{
+  "id": "math.high",
+  "name": "高中数学",
+  "version": "0.1.0",
+  "schema": "subject-pack/1",
+  "license": "CC-BY-SA-4.0",
+  "author": "WORDO",
+  "description": "高中数学（人教 A 版必修一起步）。首个学科包：格式设计的试验田。",
+  "depends": [],
+  "language": "zh-CN",
+  "presentation": ["teaching", "qa"]
+}
