@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WORDO 学习系统</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <span class="brand">WORDO</span><span class="brand-sub">学习系统 / v0.1</span>
+    </div>
+    <div class="packs-dir">
+      <label>packs/</label>
+      <input id="packs-dir" type="text" spellcheck="false" />
+      <button id="btn-refresh" class="btn">刷新</button>
+    </div>
+  </header>
+
+  <main>
+    <aside>
+      <h2>学科包</h2>
+      <div id="pack-list"></div>
+    </aside>
+
+    <section id="content">
+      <nav id="tabs" class="hidden">
+        <button class="tab active" data-tab="tree">知识树</button>
+        <button class="tab" data-tab="items">题目</button>
+        <button class="tab" data-tab="report">校验报告</button>
+      </nav>
+      <div id="view"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

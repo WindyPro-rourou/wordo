@@ -14,6 +14,7 @@ use crate::model::*;
 pub enum Level {
     Error,
     Warning,
+    #[allow(dead_code)]
     Info,
 }
 
@@ -42,18 +43,11 @@ pub struct PackReport {
     pub edge_count: usize,
     pub item_count: usize,
     pub coverage_pct: f64,
+    pub error_count: usize,
+    pub warning_count: usize,
     pub dangling_kcs: Vec<String>,
     pub per_kc_items: Vec<KcStat>,
     pub issues: Vec<Issue>,
-}
-
-impl PackReport {
-    pub fn error_count(&self) -> usize {
-        self.issues.iter().filter(|i| i.level == Level::Error).count()
-    }
-    pub fn warning_count(&self) -> usize {
-        self.issues.iter().filter(|i| i.level == Level::Warning).count()
-    }
 }
 
 fn push(issues: &mut Vec<Issue>, level: Level, file: &str, code: &str, msg: impl Into<String>) {
@@ -503,7 +497,7 @@ pub fn validate_pack(pack: &Path) -> PackReport {
 #[allow(clippy::too_many_arguments)]
 fn finish(
     pack: &Path,
-    issues: Vec<Issue>,
+    mut issues: Vec<Issue>,
     subject_id: Option<String>,
     subject_version: Option<String>,
     schema: Option<String>,
@@ -514,7 +508,15 @@ fn finish(
     dangling_kcs: Vec<String>,
     per_kc_items: Vec<KcStat>,
 ) -> PackReport {
-    let mut r = PackReport {
+    let lv = |l: Level| match l {
+        Level::Error => 0,
+        Level::Warning => 1,
+        Level::Info => 2,
+    };
+    issues.sort_by(|a, b| lv(a.level).cmp(&lv(b.level)).then_with(|| a.code.cmp(&b.code)));
+    let error_count = issues.iter().filter(|i| i.level == Level::Error).count();
+    let warning_count = issues.iter().filter(|i| i.level == Level::Warning).count();
+    PackReport {
         pack_path: pack.display().to_string(),
         subject_id,
         subject_version,
@@ -523,17 +525,10 @@ fn finish(
         edge_count,
         item_count,
         coverage_pct,
+        error_count,
+        warning_count,
         dangling_kcs,
         per_kc_items,
         issues,
-    };
-    r.issues.sort_by(|a, b| {
-        let lv = |l: Level| match l {
-            Level::Error => 0,
-            Level::Warning => 1,
-            Level::Info => 2,
-        };
-        lv(a.level).cmp(&lv(b.level)).then_with(|| a.code.cmp(&b.code))
-    });
-    r
+    }
 }

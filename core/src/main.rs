@@ -1,20 +1,23 @@
 //! WORDO 核心 CLI。
 //! 子命令：
 //!   validate-pack <学科包目录> [--json]   校验学科包（subject-pack/1）
-
-mod model;
-mod validate;
+//!   inspect-pack  <学科包目录> [--json]   导出包的全部内容 + 校验报告（GUI 数据层的 headless 版）
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use validate::Level;
+use wordo_core::validate::{self, Level};
 
-const USAGE: &str = "用法: wordo validate-pack <学科包目录> [--json]\n子命令: validate-pack（后续: sync / schedule / build-index）";
+const USAGE: &str = "用法:\n  wordo validate-pack <学科包目录> [--json]   校验学科包\n  wordo inspect-pack  <学科包目录> [--json]   导出全部内容 + 校验报告\n子命令: validate-pack · inspect-pack（后续: sync / schedule / build-index）";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() < 3 || args[1] != "validate-pack" {
+    if args.len() < 3 {
+        eprintln!("{USAGE}");
+        return ExitCode::from(2);
+    }
+    let cmd = args[1].as_str();
+    if cmd != "validate-pack" && cmd != "inspect-pack" {
         eprintln!("{USAGE}");
         return ExitCode::from(2);
     }
@@ -26,24 +29,39 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
-    let report = validate::validate_pack(&path);
-
-    if json {
-        match serde_json::to_string_pretty(&report) {
-            Ok(s) => println!("{s}"),
-            Err(e) => {
-                eprintln!("报告序列化失败: {e}");
-                return ExitCode::from(2);
+    match cmd {
+        "validate-pack" => {
+            let report = validate::validate_pack(&path);
+            if json {
+                print_value(&serde_json::to_value(&report));
+            } else {
+                print_human(&report);
+            }
+            if report.error_count > 0 {
+                return ExitCode::from(1);
             }
         }
-    } else {
-        print_human(&report);
+        "inspect-pack" => {
+            match wordo_core::load::load_pack(&path) {
+                Ok(v) => print_value(&Ok(v)),
+                Err(e) => {
+                    eprintln!("错误: {e}");
+                    return ExitCode::from(1);
+                }
+            }
+        }
+        _ => unreachable!(),
     }
+    ExitCode::from(0)
+}
 
-    if report.error_count() > 0 {
-        ExitCode::from(1)
-    } else {
-        ExitCode::from(0)
+fn print_value(v: &Result<serde_json::Value, serde_json::Error>) {
+    match v {
+        Ok(val) => match serde_json::to_string_pretty(val) {
+            Ok(s) => println!("{s}"),
+            Err(e) => eprintln!("序列化失败: {e}"),
+        },
+        Err(e) => eprintln!("序列化失败: {e}"),
     }
 }
 
@@ -79,7 +97,7 @@ fn print_human(r: &validate::PackReport) {
         println!("  每 KC 题量: {}", stats.join("  "));
     }
 
-    let (errs, warns) = (r.error_count(), r.warning_count());
+    let (errs, warns) = (r.error_count, r.warning_count);
     if errs == 0 && warns == 0 {
         println!("  ✅ 全部通过");
     }

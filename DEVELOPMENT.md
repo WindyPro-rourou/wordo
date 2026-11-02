@@ -35,11 +35,31 @@ docs/                  需求 / 资料 / 大纲
 
 | 项 | 状态 |
 |---|---|
-| Rust | stable **1.99.1 x86_64-pc-windows-gnu**（rustup minimal，rsproxy 镜像）→ `%USERPROFILE%\.cargo` |
+| Rust | stable **1.99.1 x86_64-pc-windows-msvc**（默认工具链，rsproxy 镜像）→ `%USERPROFILE%\.cargo`；GNU 工具链保留作 fallback（core CLI 可用） |
+| MSVC | **VS 2022 Build Tools**（VCTools workload + Windows SDK），cl.exe/link.exe = 14.44.35207 → `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools` |
+| WebView2 | Runtime **156.0.4314.58**（Tauri 渲染依赖） |
 | 镜像 | `%USERPROFILE%\.cargo\config.toml` = rsproxy sparse（crates.io 换源） |
 | **中文路径坑** | GNU ld 处理不了中文路径（对象文件报 No such file）→ 仓库根 `.cargo/config.toml` 已把 target-dir 固定到 **`C:/wordo-build/target`**（C 盘稳定，不受数据盘盘符切换影响） |
 | git | 系统未装 → 便携版 `F:\dsh-admited\data\dsh-home\env\git\cmd\git.exe`（2.56.0；仓库已本地配置 user.name/email） |
-| Node | v24.13.0 / npm 11.6.2（Tauri 壳用；建议 npm 走 npmmirror） |
+| Node | v24.13.0 / npm 11.6.2（Tauri 壳用） |
+
+### 网络实测结论（2026-11-02，反直觉但已复核）
+
+| 通道 | 结果 |
+|---|---|
+| crates.io / rsproxy | ✅ 直连可用（cargo 全程走 rsproxy，无问题） |
+| registry.npmjs.org | ✅ **直连可用**（16s 装完 @tauri-apps/cli） |
+| registry.npmmirror.com | ❌ **超时**（与本机 7890 代理未开无关，直连也不通） |
+| github.com | ❌ 需代理（既有结论） |
+
+> **结论：npm 就用官方源**，不要迷信国内镜像。写 npm 脚本时不加 `--registry`。
+
+### GNU 工具链 vs Tauri（结论：必须 MSVC）
+
+- Tauri 依赖栈在 windows-gnu 下首个失败点：`error calling dlltool 'dlltool.exe': program not found`（parking_lot_core）。
+- dlltool 其实 rustup **自带**：`%USERPROFILE%\.rustup\toolchains\stable-x86_64-pc-windows-gnu\lib\rustlib\x86_64-pc-windows-gnu\bin\self-contained\`，只是不在 PATH——把它加进 PATH 可解这一步，但 **Tauri 官方在 Windows 仅支持 MSVC**，后面 wry/webview2 仍可能踩坑。
+- **决策：安装 VS Build Tools（VCTools workload）并切换 `stable-msvc`**（安装中；Flutter Windows 桌面构建将来也需要它）。
+- GNU 工具链保留：core 的 CLI（validate/inspect）在 gnu 上已验证可编译运行，作为无 MSVC 环境的 fallback。
 
 ## 常用命令
 
@@ -55,6 +75,6 @@ C:\wordo-build\target\debug\wordo.exe validate-pack <包目录> [--json]
 ## 里程碑
 
 - [x] **M1（2026-11-02）`pack validate` v0.1**：subject-pack/1 全规则落地（元数据 / GUIDE / KC / 先修 **DAG 环检测** / 题目规则 / 挂载率 / dangling-KC）。两个真实包实测：math.high **0 错误 1 警告**、english.high **0 错误 2 警告**——dangling-KC 信号即刻指出缺题位置（函数的概念 / 一般现在时 / 非谓语动词）。`--json` 机器接口可解析。git 首提交 `d5e54b8`（47 文件）。
-- [ ] M2：Tauri 2 桌面壳 + 包加载渲染
+- [x] **M2（2026-11-02）Tauri 2 桌面壳 + 包加载渲染**：core 拆为 lib+bin，新增 `inspect-pack`（GUI 数据层的 headless 版）；Tauri 2 壳（`list_packs` / `load_pack` 两个命令，薄封装）；前端按 `minimalist-ui` skill 重写（暖单色 + 编辑风 + 衬线标题 + 柔和 pastel 徽章 + IntersectionObserver 错峰渐显）；实测：MSVC 编译通过（191 依赖 crate）→ **12.2 MB exe → 启动成功，WebView2 渲染进程正常**。三页签：知识树 / 题目（手风琴）/ 校验报告。
 - [ ] M3：会话闭环（prompt-pack/1 + output-schema/1 接入）+ 账本
 - [ ] M4：三模型一致性测试第一轮

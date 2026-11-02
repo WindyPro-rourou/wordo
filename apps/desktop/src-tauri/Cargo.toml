@@ -1,0 +1,19 @@
+[package]
+name = "wordo-desktop"
+version = "0.1.0"
+edition = "2021"
+license = "LicenseRef-Proprietary"
+description = "WORDO 学习系统桌面壳"
+
+[lib]
+name = "wordo_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+wordo-core = { path = "../../../core" }
