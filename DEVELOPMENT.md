@@ -78,3 +78,16 @@ C:\wordo-build\target\debug\wordo.exe validate-pack <包目录> [--json]
 - [x] **M2（2026-11-02）Tauri 2 桌面壳 + 包加载渲染**：core 拆为 lib+bin，新增 `inspect-pack`（GUI 数据层的 headless 版）；Tauri 2 壳（`list_packs` / `load_pack` 两个命令，薄封装）；前端按 `minimalist-ui` skill 重写（暖单色 + 编辑风 + 衬线标题 + 柔和 pastel 徽章 + IntersectionObserver 错峰渐显）；实测：MSVC 编译通过（191 依赖 crate）→ **12.2 MB exe → 启动成功，WebView2 渲染进程正常**。三页签：知识树 / 题目（手风琴）/ 校验报告。
 - [ ] M3：会话闭环（prompt-pack/1 + output-schema/1 接入）+ 账本
 - [ ] M4：三模型一致性测试第一轮
+## M3（进行中）· 内容呈现 + 模型接入
+
+**已落地**
+- `core/src/prompt.rs`：提示词装配（`prompt-pack/1` 编译内嵌 + 注入 GUIDE.md/kc.json/题目索引），占位符 `{{READING_GUIDE}}`
+- `core/src/outcheck.rs`：按 `output-schema/1` 校验模型输出（字段/枚举/引用完整性/T1·T2）
+- `core/src/config.rs`：提供方预设（**NVIDIA NIM 首位**、DeepSeek、Kimi、通义、OpenAI、自定义）+ 配置读写
+- 壳层：`ask_model`（reqwest + rustls，OpenAI 兼容 /chat/completions）、`get_config`/`set_config`/`build_prompt`
+- 前端：**学习**页签（KC 横向选择 → 预置讲解渲染 → 让 AI 讲一遍 → 检测题 → 错因分析 → 练习点击即判）、**设置**页签
+- 素材：math 3 篇 + english 2 篇（共 5 篇 KC 讲解，四段式：直观理解/规范表述/常见误解/代表例题）
+
+**API Key 存放**：`%APPDATA%\app.wordo.desktop\config.json`（应用配置目录，**不在仓库内**，不随 git 提交）。
+
+**待办**：填 Key 后跑真机联调 → M4 三模型一致性测试第一轮。

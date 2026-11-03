@@ -215,3 +215,102 @@ aside h2 {
   transition-delay: calc(var(--i, 0) * 70ms);
 }
 .reveal.in { opacity: 1; transform: translateY(0); }
+
+/* ---------- 学习视图 ---------- */
+.btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.btn-ghost:hover { background: #ffffff; color: var(--ink); border-color: #111111; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+.chip {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 8px 14px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--card); cursor: pointer; font-size: 13px; color: var(--ink);
+  transition: border-color 200ms var(--ease), box-shadow 200ms var(--ease);
+}
+.chip:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+.chip.active { border-color: #111111; }
+.chip-n { font-family: var(--mono); font-size: 10px; color: var(--ink-2); }
+
+.lesson-head { margin-bottom: 24px; }
+.lesson-head h1 {
+  font-family: var(--serif); font-size: 34px; font-weight: 500;
+  letter-spacing: -0.02em; line-height: 1.15;
+}
+.lesson-meta { margin-top: 8px; font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+
+.lesson-block {
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card);
+  padding: 24px 28px; margin-bottom: 16px; max-width: 78ch;
+}
+.block-label {
+  font-family: var(--mono); font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.12em; color: var(--ink-2); margin-bottom: 14px;
+}
+.lesson-block h2, .lesson-block h3 {
+  font-family: var(--serif); font-weight: 500; letter-spacing: -0.01em;
+  margin: 20px 0 8px; font-size: 19px;
+}
+.lesson-block h2:first-of-type, .lesson-block h3:first-of-type { margin-top: 0; }
+.lesson-block p { margin: 8px 0; font-size: 15px; }
+.lesson-block ul { margin: 8px 0 8px 20px; }
+.lesson-block li { margin: 5px 0; font-size: 15px; }
+.lesson-block strong { font-weight: 600; }
+.lesson-block code {
+  font-family: var(--mono); font-size: 13px;
+  background: var(--panel); padding: 1px 5px; border-radius: 4px;
+}
+.lesson-block blockquote {
+  margin: 12px 0; padding: 8px 16px;
+  border-left: 2px solid var(--line); color: var(--ink-2); font-size: 14px;
+}
+
+.hint {
+  padding: 18px 20px; background: var(--panel); border-radius: 6px;
+  font-size: 14px; color: var(--ink-2);
+}
+.actions { display: flex; align-items: center; gap: 16px; margin: 0 0 16px; flex-wrap: wrap; }
+.mono { font-family: var(--mono); font-size: 11px; }
+.muted { color: var(--ink-2); }
+
+.ai-card { border-left: 2px solid var(--p-blue-tx); }
+.kv { display: flex; gap: 12px; padding: 4px 0; font-size: 14px; }
+.kv span { color: var(--ink-2); min-width: 84px; }
+.kv b { font-weight: 600; }
+.tool-hint { margin-top: 14px; font-size: 12px; color: var(--ink-2); }
+
+.followup { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.q-stem { font-size: 15px; margin-bottom: 12px; }
+.q-opt {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 10px 14px; margin-bottom: 6px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--card);
+  font-size: 14px; color: var(--ink); cursor: pointer;
+  transition: border-color 200ms var(--ease), background 200ms var(--ease);
+}
+.q-opt:hover { border-color: var(--ink-2); }
+.q-opt.static { cursor: default; }
+.q-opt .key { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+.q-opt.correct { background: var(--p-green-bg); border-color: var(--p-green-bg); color: var(--p-green-tx); font-weight: 600; }
+.q-opt.wrong { background: var(--p-red-bg); border-color: var(--p-red-bg); color: var(--p-red-tx); }
+.ok-mark, .no-mark { margin-left: auto; font-size: 11px; font-family: var(--mono); }
+.q-card { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.q-card:last-child { border-bottom: none; }
+.q-reveal { margin-top: 8px; }
+
+/* ---------- 设置 ---------- */
+.settings { max-width: 62ch; }
+.settings h1 { font-family: var(--serif); font-size: 30px; font-weight: 500; letter-spacing: -0.02em; margin-bottom: 8px; }
+.field { margin: 20px 0; }
+.field label {
+  display: block; margin-bottom: 6px;
+  font-family: var(--mono); font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--ink-2);
+}
+.field input, .field select {
+  width: 100%; padding: 9px 12px;
+  border: 1px solid var(--line); border-radius: 6px; background: #ffffff;
+  font-size: 14px; color: var(--ink);
+}
+.field input[type="password"] { font-family: var(--mono); }
+.settings-note { margin-top: 16px; word-break: break-all; }

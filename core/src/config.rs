@@ -1,0 +1,62 @@
+//! 应用配置：模型提供方预设 + 用户配置的读写。
+//! ⚠️ 配置里含 API Key —— 文件位置由壳层决定（应用配置目录，**不在仓库内**）。
+
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::fs;
+use std::path::Path;
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ProviderCfg {
+    pub preset: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub model: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AppConfig {
+    pub providers: Vec<ProviderCfg>,
+    pub active: usize,
+    /// fast | normal | deep —— 思考强度档位
+    pub thinking: String,
+}
+
+/// 内置提供方预设（纯 API；OpenAI 兼容协议）
+pub fn presets() -> Value {
+    json!([
+        { "id": "nvidia", "label": "NVIDIA NIM", "baseUrl": "https://integrate.api.nvidia.com/v1",
+          "models": ["deepseek-ai/deepseek-r1", "meta/llama-3.3-70b-instruct",
+                     "qwen/qwen2.5-72b-instruct", "nvidia/llama-3.1-nemotron-70b-instruct"] },
+        { "id": "deepseek", "label": "DeepSeek", "baseUrl": "https://api.deepseek.com/v1",
+          "models": ["deepseek-chat", "deepseek-reasoner"] },
+        { "id": "moonshot", "label": "Kimi (Moonshot)", "baseUrl": "https://api.moonshot.cn/v1",
+          "models": ["moonshot-v1-8k", "moonshot-v1-32k"] },
+        { "id": "dashscope", "label": "通义千问", "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+          "models": ["qwen-plus", "qwen-max"] },
+        { "id": "openai", "label": "OpenAI", "baseUrl": "https://api.openai.com/v1",
+          "models": ["gpt-4o-mini", "gpt-4o"] },
+        { "id": "custom", "label": "自定义（OpenAI 兼容）", "baseUrl": "", "models": [] }
+    ])
+}
+
+pub fn load(path: &Path) -> AppConfig {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+pub fn save(path: &Path, cfg: &AppConfig) -> Result<(), String> {
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let t = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
+    fs::write(path, t).map_err(|e| e.to_string())
+}
+
+pub fn active_provider(cfg: &AppConfig) -> Option<ProviderCfg> {
+    cfg.providers.get(cfg.active).cloned()
+}

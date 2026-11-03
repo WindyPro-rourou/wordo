@@ -53,10 +53,10 @@
 
 ## ⑤ 数据阅读方法（注入位）
 
-```
-【注入位：READING_GUIDE】
-运行时在此注入：当前学科包的 GUIDE.md 全文 + 文件地图（本次任务涉及哪些文件、路径）+ 学习者状态摘要（user.md 的相关字段）。
-```
+> 运行时把 `{{READING_GUIDE}}` 替换为：当前学科包的 `GUIDE.md` 全文 + 知识点表（kc.json）+ 题目索引 + 学习者状态摘要（user.md）。
+> 实现见 `core/src/prompt.rs`（规范随代码编译内嵌，与实现同版本）。
+
+{{READING_GUIDE}}
 
 ## ⑥ 标准示例（few-shot）
 
