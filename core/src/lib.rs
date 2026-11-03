@@ -1,4 +1,5 @@
 pub mod config;
+pub mod learn;
 pub mod llm;
 pub mod load;
 #[allow(dead_code)]

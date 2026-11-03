@@ -78,3 +78,18 @@ pub fn default_path() -> std::path::PathBuf {
     let base = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
     std::path::PathBuf::from(base).join("app.wordo.desktop").join("config.json")
 }
+
+/// 默认账号域目录：优先 WORDO_DOMAIN，其次 %APPDATA%\app.wordo.desktop\domain\default
+/// （把该目录放到同步盘上，就等于把账号域接上了同步通道）
+pub fn default_domain_path() -> std::path::PathBuf {
+    if let Ok(p) = std::env::var("WORDO_DOMAIN") {
+        if !p.trim().is_empty() {
+            return std::path::PathBuf::from(p);
+        }
+    }
+    let base = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+    std::path::PathBuf::from(base)
+        .join("app.wordo.desktop")
+        .join("domain")
+        .join("default")
+}

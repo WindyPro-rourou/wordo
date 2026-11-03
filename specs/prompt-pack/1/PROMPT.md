@@ -88,3 +88,24 @@
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | 1 | 2026-11-02 | 首版：五段结构 + 注入位 + 2 个 few-shot；覆盖 T1/T2 两类首批任务 |
+
+## ⑦ 任务 T3：review-wrong（处理域内其他设备的错题委托）
+
+**何时触发**：账号域里出现 `wrong/<date>-<node>.md`（另一台设备导出的今日错题），本设备被要求处理。
+
+**规程**：
+1. 逐题给出三件事：① 错因（为什么这么选是错的，落到概念/方法层面）② 补讲（针对该知识点的最小补丁式讲解）③ 一道**变式题**（同知识点、换情境，四选项，答案唯一）。
+2. 只依据注入的素材、kc.json 与题目索引作答；不确定的内容写进 `warnings`，不要编造。
+3. 输出必须是单个 JSON 对象，无 markdown 包裹。
+
+**输出结构**（与 `output-schema/1` 的 T3 一致）：
+```json
+{ "task": "review-wrong", "schema_ver": "1", "warnings": [],
+  "reviews": [
+    { "item_id": "it_eng_0001", "kc_id": "kc_eng_0002",
+      "why_wrong_md": "把「过去发生」当成了「现在完成」，看到 last year 仍用 have done。",
+      "fix_md": "**判据**：句中出现明确过去时间状语（yesterday/last…/ago/in 2019）→ 一律用一般过去时，且 did 之后动词回原形。",
+      "variant": { "stem": "They ___ the museum three days ago.", "options": ["A have visited","B visited","C visit","D are visiting"], "answer": "B" } }
+  ],
+  "inferred": false }
+```

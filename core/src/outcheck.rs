@@ -127,6 +127,53 @@ pub fn check(task: &str, v: &Value, kc_ids: &HashSet<String>) -> Vec<String> {
                 None => errs.push("缺少 followup_question".to_string()),
             }
         }
+        // T3：处理域内其他设备发来的「错题委托」
+        "review-wrong" => {
+            if v.get("inferred").is_none() {
+                errs.push("缺少字段 inferred".to_string());
+            }
+            match v.get("reviews").and_then(|x| x.as_array()) {
+                Some(arr) => {
+                    if arr.is_empty() {
+                        errs.push("reviews 为空数组（至少处理 1 道错题）".to_string());
+                    }
+                    for (i, r) in arr.iter().enumerate() {
+                        let tag = format!("reviews[{i}]");
+                        for k in ["item_id", "kc_id", "why_wrong_md", "fix_md", "variant"] {
+                            if r.get(k).is_none() {
+                                errs.push(format!("{tag} 缺少字段 {k}"));
+                            }
+                        }
+                        match r.get("why_wrong_md").and_then(|x| x.as_str()) {
+                            Some(s) if s.trim().len() >= 4 => {}
+                            _ => errs.push(format!("{tag}.why_wrong_md 过短")),
+                        }
+                        match r.get("fix_md").and_then(|x| x.as_str()) {
+                            Some(s) if s.trim().len() >= 8 => {}
+                            _ => errs.push(format!("{tag}.fix_md 过短")),
+                        }
+                        if let Some(k) = r.get("kc_id").and_then(|x| x.as_str()) {
+                            if !kc_ids.contains(k) {
+                                errs.push(format!("{tag}.kc_id「{k}」不在本包知识点表中"));
+                            }
+                        }
+                        if let Some(var) = r.get("variant") {
+                            if var.get("stem").and_then(|x| x.as_str()).map_or(true, |s| s.trim().is_empty()) {
+                                errs.push(format!("{tag}.variant.stem 为空"));
+                            }
+                            let n = var.get("options").and_then(|x| x.as_array()).map(|a| a.len()).unwrap_or(0);
+                            if n < 2 {
+                                errs.push(format!("{tag}.variant.options 至少 2 项，实际 {n}"));
+                            }
+                            if var.get("answer").and_then(|x| x.as_str()).map_or(true, |s| s.trim().is_empty()) {
+                                errs.push(format!("{tag}.variant.answer 为空"));
+                            }
+                        }
+                    }
+                }
+                None => errs.push("缺少 reviews 数组".to_string()),
+            }
+        }
         other => errs.push(format!("未知任务「{other}」")),
     }
 

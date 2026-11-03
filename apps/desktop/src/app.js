@@ -12,6 +12,8 @@ const state = {
   presets: [],
   configPath: "",
   learn: { kcId: null, ai: null, aiLoading: false, aiError: null, pick: null, classify: null, classifyLoading: false },
+  /* 「我的」= 学习账本视图：state(user.md) / due(薄弱+今日队列) / sync(域同步结果) / msg(操作反馈) */
+  me: { state: null, due: null, sync: null, review: null, msg: "", error: null, loading: false, busy: null, seq: 0, view: null },
 };
 
 /* ══════════ 启动 ══════════ */
@@ -27,13 +29,18 @@ async function boot() {
   });
   await loadConfig();
   await refreshPacks();
-  if (state.packs.length) await openPack(state.packs[0].path);
+  if (state.packs.length) {
+    await openPack(state.packs[0].path);
+  } else {
+    // 没有学科包时也让页签可见：「我的」读的是账本，不依赖具体学科包
+    document.getElementById("tabs").classList.remove("hidden");
+  }
 }
 
 function setTab(tab) {
   state.tab = tab;
   document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === tab));
-  document.getElementById("tabs").classList.toggle("hidden", !state.current && tab !== "settings");
+  document.getElementById("tabs").classList.toggle("hidden", !state.current && tab !== "settings" && tab !== "me");
   render();
 }
 
@@ -108,6 +115,7 @@ async function openPack(path) {
 function render() {
   const view = document.getElementById("view");
   if (state.tab === "settings") return renderSettings(view);
+  if (state.tab === "me") return renderMe(view);
   if (!state.current) return viewMessage("从左侧选择一个学科包");
   if (state.tab === "learn") renderLearn(view);
   else if (state.tab === "items") renderItems(view);
@@ -267,7 +275,7 @@ function renderQuizItem(it, idx) {
         })
         .join("")
     : `<div class="q-opt static">${esc(it.answer_text || it.answer || "")}</div>`;
-  return `<div class="q-card reveal" style="--i:${idx}">
+  return `<div class="q-card reveal" style="--i:${idx}" data-item="${esc(it.id || "")}" data-kc="${esc(arrOf(it.kc_ids)[0] || "")}">
     <div class="q-stem">${idx + 1}. ${esc(it.stem)}</div>
     ${opts}
     <div class="q-reveal hidden">${it.analysis ? `<div class="analysis"><b>解析</b>　${esc(it.analysis)}</div>` : ""}</div>
@@ -294,10 +302,7 @@ function bindLearn(view) {
 
   view.querySelectorAll(".q-opt[data-correct]").forEach((b) => {
     b.onclick = () => {
-      const ok = b.dataset.correct === "1";
-      b.classList.add(ok ? "correct" : "wrong");
-      const card = b.closest(".q-card");
-      if (card) card.querySelector(".q-reveal")?.classList.remove("hidden");
+      answerQuiz(b);
     };
   });
 
@@ -315,6 +320,63 @@ function bindLearn(view) {
     };
 }
 
+/* 点选项 = 判分 + 记账（写一条账本事件，并显示该 KC 更新后的状态） */
+async function answerQuiz(btn) {
+  const card = btn.closest(".q-card");
+  if (!card) return;
+  const ok = btn.dataset.correct === "1";
+  // 原有配色与解析展示保持不变
+  btn.classList.add(ok ? "correct" : "wrong");
+  card.querySelector(".q-reveal")?.classList.remove("hidden");
+
+  // 同一题已记账：只给配色，不重复写入账本
+  if (card.dataset.done === "1") return;
+
+  const itemId = card.dataset.item || "";
+  const pack = state.current?.meta?.id || "";
+  if (!itemId || !pack) {
+    showAnsNote(card, "无法记账：缺少题目 ID 或学科包 ID。", "err");
+    return;
+  }
+
+  card.dataset.busy = "1";
+  showAnsNote(card, "记账中…", "pending");
+  try {
+    const res = await invoke("record_answer", {
+      domain: getDomain(),
+      packsDir: packsDirValue(),
+      pack,
+      itemId,
+      answered: btn.dataset.ans || "",
+      source: "quiz",
+    });
+    const k = (res && res.kc) || {};
+    showAnsNote(
+      card,
+      `${ok ? CHECK_SVG : CROSS_SVG}<span>正确答案 ${esc(String((res && res.correct) || ""))} · 本知识点 对/错 ${esc(String(k.correct ?? 0))}/${esc(String(k.wrong ?? 0))} · 连对 ${esc(String(k.streak ?? 0))} · 掌握度 ${esc(pct(k.mastery))} · 下次复习 ${esc(dueLabel(res && res.nextDue, false) || "待安排")}</span>`,
+      ok ? "ok" : "no",
+      true
+    );
+    card.dataset.done = "1";
+    // 账本变了：清掉「我的」页缓存，下次进入重新拉取
+    state.me.due = null;
+  } catch (e) {
+    showAnsNote(card, "记账失败：" + readableErr(e), "err");
+  }
+  card.dataset.busy = "";
+}
+
+function showAnsNote(card, content, kind, isHtml) {
+  let el = card.querySelector(".me-ans");
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "me-ans";
+    card.appendChild(el);
+  }
+  el.className = "me-ans" + (kind ? " me-ans-" + kind : "");
+  el.innerHTML = isHtml ? content : esc(content);
+}
+
 /* ---- 模型调用 ---- */
 async function runExplain() {
   const kc = currentKc();
@@ -327,6 +389,8 @@ async function runExplain() {
       req: {
         task: "explain",
         packPath: state.current.report.pack_path,
+        domain: getDomain(),
+        packsDir: packsDirValue(),
         payload: { kc_id: kc.id, kc_name: kc.name, toc: kc.toc, learner: {} },
       },
     });
@@ -349,6 +413,8 @@ async function runClassify() {
       req: {
         task: "classify-error",
         packPath: state.current.report.pack_path,
+        domain: getDomain(),
+        packsDir: packsDirValue(),
         payload: {
           item_id: "followup",
           stem: q.stem,
@@ -376,6 +442,288 @@ function activeModelLabel() {
   const c = state.config || {};
   const p = (c.providers || [])[c.active || 0];
   return p ? p.model || "(未选模型)" : "(未配置)";
+}
+
+/* ══════════ 我的（学习账本：user.md / 薄弱 / 今日复习 / 域操作） ══════════ */
+function getDomain() {
+  try {
+    return localStorage.getItem("wordoDomain") || "";
+  } catch (e) {
+    return "";
+  }
+}
+function packsDirValue() {
+  const el = document.getElementById("packs-dir");
+  return el && typeof el.value === "string" ? el.value.trim() : "";
+}
+function readableErr(e) {
+  const s = e && e.message ? e.message : String(e == null ? "" : e);
+  return s.trim() || "未知错误（后端未返回原因）";
+}
+function pct(m) {
+  const n = Number(m);
+  return isFinite(n) ? Math.round(n * 100) + "%" : "—";
+}
+/* 到期时间：兼容 RFC3339 字符串与秒/毫秒时间戳；过期则标注 */
+function fmtWhen(v) {
+  if (v == null || v === "") return "";
+  const s = String(v);
+  let d;
+  if (/^\d+$/.test(s)) {
+    const n = Number(s);
+    d = new Date(n < 1e12 ? n * 1000 : n);
+  } else {
+    d = new Date(s);
+  }
+  if (isNaN(d.getTime())) return s;
+  const p = (x) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function dueLabel(ts, mastered) {
+  if (mastered) return "已掌握";
+  const s = fmtWhen(ts);
+  if (!s) return "待安排";
+  const t = new Date(String(ts)).getTime();
+  if (!isNaN(t) && t <= Date.now()) return s + " · 已到期";
+  return s;
+}
+/* user.md 的 front-matter（--- ... ---）不是正文，渲染前去掉 */
+function stripFrontMatter(md) {
+  const s = String(md || "");
+  const m = s.match(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/);
+  return m ? s.slice(m[0].length) : s;
+}
+
+async function renderMe(view) {
+  state.me.view = view;
+  paintMe(view);
+  await loadMe();
+  if (state.me.view === view && state.tab === "me") paintMe(view);
+}
+
+async function loadMe() {
+  const domain = getDomain();
+  const packsDir = packsDirValue();
+  const seq = ++state.me.seq;
+  state.me.loading = true;
+  state.me.error = null;
+  try {
+    const [st, due] = await Promise.all([
+      invoke("learn_state", { domain, packsDir }),
+      invoke("learn_due", { domain, packsDir }),
+    ]);
+    if (seq !== state.me.seq) return;
+    state.me.state = st || null;
+    state.me.due = due || null;
+  } catch (e) {
+    if (seq !== state.me.seq) return;
+    state.me.error = "读取学习账本失败：" + readableErr(e);
+  } finally {
+    if (seq === state.me.seq) state.me.loading = false;
+  }
+}
+
+function refreshMe() {
+  if (state.tab === "me" && state.me.view) paintMe(state.me.view);
+}
+
+function paintMe(view) {
+  const st = state.me.state;
+  const d = state.me.due;
+  const weak = (d && d.weak) || [];
+  const due = (d && d.due) || [];
+  const domain = getDomain();
+  const busy = state.me.busy;
+
+  let html = `<div class="me">
+    <div class="me-head">
+      <h1>我的</h1>
+      <div class="me-sub mono muted">${domain ? "域：" + esc(domain) : "默认账号域"}${st && st.domain ? " · " + esc(st.domain) : ""}</div>
+      ${st && st.path ? `<div class="me-path mono muted">user.md：${esc(st.path)}</div>` : ""}
+    </div>`;
+
+  if (state.me.error) html += `<div class="me-err">${esc(state.me.error)}</div>`;
+  if (state.me.msg) html += `<div class="me-msg">${esc(state.me.msg)}</div>`;
+
+  html += `<div class="me-stats">${[
+    ["今日作答", d ? d.today_answers : "—"],
+    ["今日错题", d ? d.today_wrong : "—"],
+    ["薄弱知识点", d ? weak.length : "—"],
+    ["今日待复习", d ? due.length : "—"],
+  ]
+    .map(([l, n], i) => `<div class="me-stat reveal" style="--i:${i}"><div class="n">${esc(String(n))}</div><div class="l">${esc(l)}</div></div>`)
+    .join("")}</div>`;
+
+  html += `<div class="actions">
+    <button class="btn" id="me-sync" ${busy ? "disabled" : ""}>${busy === "sync" ? "同步中…" : "同步域"}</button>
+    <button class="btn btn-ghost" id="me-delegate" ${busy ? "disabled" : ""}>${busy === "delegate" ? "导出中…" : "导出今日错题"}</button>
+    <button class="btn btn-ghost" id="me-review" ${busy ? "disabled" : ""}>${busy === "review" ? "处理中…（调用模型，较慢）" : "处理域内委托"}</button>
+    <span class="mono muted">${state.me.loading ? "读取中…" : d ? "事件 " + esc(String(d.events_total ?? 0)) + " 条 · 节点 " + esc(String(arrOf(d.nodes).length)) + " 个" : ""}</span>
+  </div>`;
+
+  const sy = state.me.sync;
+  if (sy) {
+    const per = sy.per_node || {};
+    const keys = Object.keys(per);
+    html += `<section class="me-block">
+      <div class="block-label">同步结果</div>
+      <div class="me-kv"><span>节点</span><b class="mono">${esc(sy.node || "—")}</b></div>
+      <div class="me-kv"><span>域</span><b class="mono">${esc(sy.domain || "")}</b></div>
+      <div class="me-kv"><span>事件总数</span><b>${esc(String(sy.events_total ?? 0))}</b></div>
+      <div class="me-kv"><span>薄弱 / 待复习</span><b>${esc(String(sy.weak ?? 0))} / ${esc(String(sy.due ?? 0))}</b></div>
+      <div class="me-kv"><span>user.md</span><b class="mono">${esc(sy.user_md || "—")}</b></div>
+      <div class="me-kv"><span>待处理委托</span><b>${arrOf(sy.pending_delegations).length ? arrOf(sy.pending_delegations).map(esc).join("、") : "无"}</b></div>
+      <div class="me-pernode">${
+        keys.length ? keys.map((k) => `<span class="me-tag">${esc(k)} <b>${esc(String(per[k]))}</b></span>`).join("") : `<span class="muted">（尚无节点账本）</span>`
+      }</div>
+    </section>`;
+  }
+
+  const rv = state.me.review;
+  if (rv) {
+    const done = arrOf(rv.processed);
+    html += `<section class="me-block">
+      <div class="block-label">委托处理</div>
+      <div class="me-kv"><span>处理前待办</span><b>${esc(String(rv.pending_before ?? 0))}</b></div>
+      ${
+        done.length
+          ? done
+              .map(
+                (x, i) =>
+                  `<div class="me-kv"><span>${esc(String(x.src || "委托 " + (i + 1)))}</span><b>${esc(x.ok ? "已生成" : "校验未通过")} · 尝试 ${esc(String(x.attempts ?? 1))} 次 → ${esc(String(x.result || ""))}</b></div>`
+              )
+              .join("")
+          : `<div class="hint">没有处理任何委托。</div>`
+      }
+    </section>`;
+  }
+
+  html += `<section class="me-block">
+    <div class="block-label">薄弱知识点（${weak.length}）</div>
+    ${weak.length ? meTable(weak, false) : `<div class="hint">还没有薄弱项 —— 先去学习页做几道题，答错的会自动进这张表。</div>`}
+  </section>`;
+
+  html += `<section class="me-block">
+    <div class="block-label">今日复习队列（${due.length}）</div>
+    ${due.length ? meTable(due, true) : `<div class="hint">今日没有到期的复习。</div>`}
+  </section>`;
+
+  const md = st && st.userMd ? stripFrontMatter(st.userMd) : "";
+  html += `<section class="me-block">
+    <details class="me-md" open>
+      <summary><span class="block-label">user.md 全文</span><span class="mono muted">${md ? esc(String(String(st.userMd).length)) + " 字符" : "尚未生成"}</span></summary>
+      <div class="me-md-body">${md ? mdToHtml(md) : `<div class="hint">还没有学员档案。做几道题后会自动生成。</div>`}</div>
+    </details>
+  </section>`;
+
+  view.innerHTML = html + "</div>";
+
+  const bSync = view.querySelector("#me-sync");
+  if (bSync) bSync.onclick = runMeSync;
+  const bDel = view.querySelector("#me-delegate");
+  if (bDel) bDel.onclick = runMeDelegate;
+  const bRev = view.querySelector("#me-review");
+  if (bRev) bRev.onclick = runMeReview;
+  view.querySelectorAll(".me-go").forEach((b) => {
+    b.onclick = () => startReview(b.dataset.pack, b.dataset.kc);
+  });
+  observeReveals(view);
+}
+
+function meTable(rows, withAction) {
+  return `<div class="me-table-wrap"><table class="me-table">
+    <thead><tr><th>知识点</th><th>掌握度</th><th>对 / 错</th><th>连对</th><th>下次到期</th>${withAction ? "<th></th>" : ""}</tr></thead>
+    <tbody>${rows
+      .map((k) => {
+        const m = Math.max(0, Math.min(100, Math.round((Number(k.mastery) || 0) * 100)));
+        return `<tr>
+        <td><div class="me-kc">${esc(k.kc_name || k.kc_id || "")}</div><div class="me-kc-sub mono">${esc(k.pack || "")}${k.attempts != null ? " · 作答 " + esc(String(k.attempts)) : ""}</div></td>
+        <td><span class="me-meter"><span style="width:${m}%"></span></span><span class="mono">${esc(pct(k.mastery))}</span></td>
+        <td class="mono">${esc(String(k.correct ?? 0))} / ${esc(String(k.wrong ?? 0))}</td>
+        <td class="mono">${esc(String(k.streak ?? 0))}</td>
+        <td class="mono">${esc(dueLabel(k.due_ts, k.mastered))}</td>
+        ${withAction ? `<td><button class="btn btn-ghost me-go" data-pack="${esc(k.pack || "")}" data-kc="${esc(k.kc_id || "")}">开始复习</button></td>` : ""}
+      </tr>`;
+      })
+      .join("")}</tbody>
+  </table></div>`;
+}
+
+/* 跳到学习页对应知识点（必要时先切到该 KC 所属学科包） */
+async function startReview(packId, kcId) {
+  const target = (state.packs || []).find((p) => p.subjectId === packId);
+  const cur = state.current?.meta?.id || null;
+  if (target && target.path && cur !== packId) {
+    await openPack(target.path);
+  }
+  state.learn.kcId = kcId || null;
+  state.learn.ai = null;
+  state.learn.aiError = null;
+  state.learn.pick = null;
+  state.learn.classify = null;
+  setTab("learn");
+}
+
+async function runMeSync() {
+  const domain = getDomain();
+  const packsDir = packsDirValue();
+  state.me.busy = "sync";
+  state.me.msg = "";
+  state.me.error = null;
+  refreshMe();
+  try {
+    const sy = await invoke("learn_sync", { domain, packsDir });
+    state.me.sync = sy || null;
+    state.me.msg = "同步完成：事件 " + ((sy && sy.events_total) || 0) + " 条 · 节点 " + Object.keys((sy && sy.per_node) || {}).length + " 个 · 待处理委托 " + arrOf(sy && sy.pending_delegations).length + " 份";
+    await loadMe();
+  } catch (e) {
+    state.me.error = "同步失败：" + readableErr(e);
+  }
+  state.me.busy = null;
+  refreshMe();
+}
+
+async function runMeDelegate() {
+  const domain = getDomain();
+  const packsDir = packsDirValue();
+  state.me.busy = "delegate";
+  state.me.msg = "";
+  state.me.error = null;
+  refreshMe();
+  try {
+    const r = await invoke("learn_delegate", { domain, packsDir });
+    if (r && r.exported) {
+      state.me.msg = "已导出今日错题委托：" + (r.count || 0) + " 条 → " + (r.file || "");
+    } else {
+      state.me.msg = "没有可导出的错题" + (r && r.reason ? "（" + r.reason + "）" : "");
+    }
+    await loadMe();
+  } catch (e) {
+    state.me.error = "导出失败：" + readableErr(e);
+  }
+  state.me.busy = null;
+  refreshMe();
+}
+
+async function runMeReview() {
+  const domain = getDomain();
+  const packsDir = packsDirValue();
+  state.me.busy = "review";
+  state.me.msg = "";
+  state.me.error = null;
+  state.me.review = null;
+  refreshMe();
+  try {
+    const r = await invoke("learn_review", { domain, packsDir, limit: 3 });
+    state.me.review = r || null;
+    const n = arrOf(r && r.processed).length;
+    state.me.msg = n ? "已处理 " + n + " 份委托（处理前待办 " + ((r && r.pending_before) || 0) + "）" : "没有待处理的域内委托" + (r && r.pending_before ? "（处理前待办 " + r.pending_before + "）" : "");
+    await loadMe();
+  } catch (e) {
+    state.me.error = "处理委托失败：" + readableErr(e);
+  }
+  state.me.busy = null;
+  refreshMe();
 }
 
 /* ══════════ 设置 ══════════ */
@@ -558,6 +906,8 @@ function renderReport(view) {
 /* ══════════ 工具 ══════════ */
 const CHECK_SVG =
   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#346538" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+const CROSS_SVG =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9f2f2d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
 
 function arrOf(v) {
   return Array.isArray(v) ? v : v == null ? [] : [v];

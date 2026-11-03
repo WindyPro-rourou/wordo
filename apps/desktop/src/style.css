@@ -314,3 +314,99 @@ aside h2 {
 }
 .field input[type="password"] { font-family: var(--mono); }
 .settings-note { margin-top: 16px; word-break: break-all; }
+
+/* ══════════ 我的（学习账本）——新增类统一 me- 前缀，不改动既有类 ══════════ */
+.me { max-width: 92ch; }
+.me-head { margin-bottom: 20px; }
+.me-head h1 {
+  font-family: var(--serif); font-size: 34px; font-weight: 500;
+  letter-spacing: -0.02em; line-height: 1.15;
+}
+.me-sub { margin-top: 6px; }
+.me-path { margin-top: 2px; word-break: break-all; }
+
+.me-err {
+  padding: 10px 14px; margin-bottom: 12px; border-radius: 6px;
+  font-size: 13px; background: var(--p-red-bg); color: var(--p-red-tx);
+}
+.me-msg {
+  padding: 10px 14px; margin-bottom: 12px; border-radius: 6px;
+  font-size: 13px; background: var(--p-green-bg); color: var(--p-green-tx);
+}
+
+.me-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.me-stat { border: 1px solid var(--line); border-radius: 8px; background: var(--card); padding: 16px 18px; }
+.me-stat .n { font-family: var(--serif); font-size: 28px; font-weight: 500; line-height: 1; }
+.me-stat .l {
+  margin-top: 8px; font-family: var(--mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2);
+}
+
+.me-block {
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card);
+  padding: 20px 22px; margin-bottom: 16px;
+}
+.me-block .hint { padding: 14px 16px; }
+.me-kv { display: flex; gap: 12px; padding: 3px 0; font-size: 13px; }
+.me-kv span { color: var(--ink-2); min-width: 96px; flex-shrink: 0; }
+.me-kv b { font-weight: 600; word-break: break-all; }
+.me-pernode { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.me-tag {
+  font-family: var(--mono); font-size: 11px; color: var(--ink-2);
+  border: 1px solid var(--line); border-radius: 9999px; padding: 2px 10px;
+}
+.me-tag b { color: var(--ink); }
+
+.me-table-wrap { overflow-x: auto; }
+.me-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.me-table th {
+  text-align: left; font-family: var(--mono); font-size: 10px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-2);
+  padding: 0 12px 10px 0; border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+.me-table td { padding: 12px 12px 12px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.me-table tr:last-child td { border-bottom: none; }
+.me-kc { font-size: 14px; }
+.me-kc-sub { margin-top: 3px; color: var(--ink-2); }
+.me-meter {
+  display: inline-block; width: 70px; height: 4px; border-radius: 9999px;
+  background: var(--line); margin-right: 8px; vertical-align: middle; overflow: hidden;
+}
+.me-meter span { display: block; height: 100%; background: var(--ink); }
+.me-go { padding: 4px 12px; font-size: 12px; white-space: nowrap; }
+
+.me-md summary {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  cursor: pointer; list-style: none;
+}
+.me-md summary::-webkit-details-marker { display: none; }
+.me-md summary .block-label { margin-bottom: 0; }
+.me-md-body { margin-top: 16px; }
+.me-md-body h2, .me-md-body h3 {
+  font-family: var(--serif); font-weight: 500; letter-spacing: -0.01em;
+  font-size: 19px; margin: 18px 0 8px;
+}
+.me-md-body h2:first-child, .me-md-body h3:first-child { margin-top: 0; }
+.me-md-body p { margin: 8px 0; font-size: 14px; }
+.me-md-body ul { margin: 8px 0 8px 20px; }
+.me-md-body li { margin: 4px 0; font-size: 14px; }
+.me-md-body strong { font-weight: 600; }
+.me-md-body code {
+  font-family: var(--mono); font-size: 12px;
+  background: var(--panel); padding: 1px 5px; border-radius: 4px;
+}
+.me-md-body blockquote {
+  margin: 10px 0; padding: 6px 14px;
+  border-left: 2px solid var(--line); color: var(--ink-2); font-size: 13px;
+}
+
+.me-ans {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 10px; padding: 10px 14px; border-radius: 6px;
+  font-size: 13px; background: var(--panel); color: var(--ink-2);
+}
+.me-ans svg { flex-shrink: 0; }
+.me-ans-ok { background: var(--p-green-bg); color: var(--p-green-tx); }
+.me-ans-no { background: var(--p-red-bg); color: var(--p-red-tx); }
+.me-ans-err { background: var(--p-red-bg); color: var(--p-red-tx); }
+.me-ans-pending { background: var(--panel); color: var(--ink-2); }

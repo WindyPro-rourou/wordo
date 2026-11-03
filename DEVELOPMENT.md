@@ -103,3 +103,42 @@ C:\wordo-build\target\debug\wordo.exe validate-pack <包目录> [--json]
 - **校验闸门实测有效**：未注入素材时首轮输出不合格、自动重试 1 次后通过（attempts=2）；
   **注入该 KC 的预置讲解素材后首轮即通过**（attempts=1）——素材是「输出稳定」的关键输入，不只是给人看的
 - **新增 CLI**：`wordo prompt`（只装配提示词，便于审阅）· `wordo ask`（真调模型，含重试）——M4 跨模型一致性测试的基础设施
+
+## M4 · 学习环路落地（体系核心）
+
+**从「能看」到「能闭环」**：新增 `core/src/learn.rs`（约 700 行），把用户描述的环路真正实现出来。
+
+### 数据模型（文本为源，结构上无冲突）
+```
+<domain>/                       # 账号域（放同步盘即为同步通道）
+  node.json                     # 本机节点身份
+  settings.md                   # 个性化设置（随域同步）
+  ledger/<node>.jsonl           # ★ 每节点 append-only 账本 = 唯一事实
+  user.md                       # ★ 派生：学习者状态（谁都能重算 → 无冲突）
+  plan.md                       # 学习计划（append-only）
+  wrong/<date>-<node>.md        # 委托文书（人读表格 + 机读 JSON 块）
+  wrong/<date>-<node>.md.result-<by>.md   # 委托回执
+```
+
+### 已实测通过的环路
+1. **作答 → 账本**：`learn-answer` 写事件，判分 + 计算掌握度与下次复习时间
+2. **账本 → user.md**：薄弱表 / 今日复习队列 / 最近错题 / 已掌握 / 其他设备回执，全部由账本派生
+3. **复习间隔**：错 → +4h；对 → +24h 起倍增（上限 30 天）——实测 4h → 24h → 48h 正确推进
+4. **掌握度**：`Σ(ok·w)/Σ(w)`，w 半衰期 72h（实测 0.33 → 0.50 随连对上升）
+5. **跨设备委托**（两节点实测）：pc-a1b2 导出错题 → pc-b9f0 调 T3 处理（首轮通过校验）→ 写回执 → pc-a1b2 同步读回，user.md 出现「其他设备帮我处理的委托」
+6. **学习计划**：`learn-plan` append-only 任务清单，完成状态记在账本
+
+### 规范三件套同步升级（T3）
+`prompt-pack/1` 增加 T3 review-wrong 规程；`output-schema/1` 增加 T3 结构与校验规则；`outcheck.rs` 实现 T3 校验。
+
+### 新增 CLI（headless，M4 跨模型测试的基础设施）
+```
+wordo learn-sync / learn-state / learn-due / learn-queue / learn-answer / learn-session
+wordo learn-delegate / learn-review / learn-plan
+```
+全部支持 `--domain`（默认 `%APPDATA%\app.wordo.desktop\domain\default`）、`--packs`、`--node`（可显式扮演某个节点，用于多节点演练）。
+
+### 设计要点（值得记住）
+- **无冲突不是靠 merge 算法，而是靠结构**：每节点只追加自己的文件，user.md/plan 视图都是派生
+- **素材是稳定的关键输入**：注入 KC 素材后，模型首轮通过校验（注入前需重试 1 次）
+- **ESP32 只需三件事**：取题、写一行 JSON、文件搬运——见 `docs/大纲/04-节点接口与最小节点-v0.1.md`

@@ -106,7 +106,8 @@ pub fn extract_json(s: &str) -> Option<Value> {
 }
 
 fn check(task: &str, pack: &Path, data: &Option<Value>) -> Vec<String> {
-    let kc_ids: HashSet<String> = crate::prompt::kc_id_set(pack);
+    // 单包或包根目录都支持（T3 委托处理可能跨包）
+    let kc_ids: HashSet<String> = crate::prompt::kc_scope(pack);
     match data {
         Some(v) => crate::outcheck::check(task, v, &kc_ids),
         None => vec!["模型输出不是合法 JSON".to_string()],

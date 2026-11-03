@@ -88,3 +88,29 @@
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | 1 | 2026-11-02 | 首版：通用外壳 + T1/T2 两类 + 校验规则（含一致率统计口径）+ 后续任务占位 |
+
+## 五、T3 `review-wrong`（委托处理）
+
+**触发**：处理账号域内 `wrong/<date>-<node>.md` 的委托文书。
+
+| 字段 | 类型 | 必填 | 约束 |
+|---|---|---|---|
+| `task` | string | ✅ | 必须为 `"review-wrong"` |
+| `schema_ver` | string | ✅ | `"1"` |
+| `warnings` | string[] | ✅ | 无则 `[]` |
+| `reviews` | object[] | ✅ | 非空；每项对应一道被委托的错题 |
+| `inferred` | bool | ✅ | 是否含推断内容 |
+
+`reviews[i]`：
+
+| 字段 | 类型 | 约束 |
+|---|---|---|
+| `item_id` | string | 必须来自委托文书 items |
+| `kc_id` | string | 必须存在于学科包 kc.json |
+| `why_wrong_md` | string | ≥4 字符；讲清「为什么这么选是错的」 |
+| `fix_md` | string | ≥8 字符；可操作的补丁式讲解 |
+| `variant` | object | `{stem, options[≥2], answer}`，同知识点换情境 |
+
+**校验（core/src/outcheck.rs 实现）**：字段齐全、`reviews` 非空、`kc_id` 引用有效、`why_wrong_md`/`fix_md` 长度、`variant` 三件套完整。不合格 → 回灌重试（≤2 次）。
+
+**一致性度量**：跨模型比较时，T3 的**结构字段**（reviews 数量、item_id 集合、variant.answer 是否为合法选项）必须 ≥95% 一致；讲解文字允许风格差异。
