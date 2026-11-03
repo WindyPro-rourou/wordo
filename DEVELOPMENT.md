@@ -91,3 +91,15 @@ C:\wordo-build\target\debug\wordo.exe validate-pack <包目录> [--json]
 **API Key 存放**：`%APPDATA%\app.wordo.desktop\config.json`（应用配置目录，**不在仓库内**，不随 git 提交）。
 
 **待办**：填 Key 后跑真机联调 → M4 三模型一致性测试第一轮。
+
+## M3.1 · 首次真机联调（NVIDIA NIM 实测）
+
+- **认证/端点**：`https://integrate.api.nvidia.com/v1` 直连可用（无需代理）
+- **踩坑**：预设里的 `meta/llama-3.3-70b-instruct` 已于 2026-08-26 EOL → HTTP 410。
+  **教训：模型清单必须以 `GET /v1/models` 实测为准**，不要凭记忆写预设。实测可用清单（部分）：
+  `deepseek-ai/deepseek-v4.1-flash`、`nvidia/nemotron-3-super-120b-a12b`、`nvidia/nemotron-3.5-lightning-30b-a3b`、
+  `moonshotai/kimi-k2.6`、`z-ai/glm-5.3-flash`、`openai/gpt-oss-20b`、`mistralai/mistral-large-4t-a52b`
+- **架构收敛**：HTTP 调用收进 `core/src/llm.rs`（唯一实现），CLI 与 GUI 同一条路径；GUI 通过 `spawn_blocking` 调用，避免阻塞 UI
+- **校验闸门实测有效**：未注入素材时首轮输出不合格、自动重试 1 次后通过（attempts=2）；
+  **注入该 KC 的预置讲解素材后首轮即通过**（attempts=1）——素材是「输出稳定」的关键输入，不只是给人看的
+- **新增 CLI**：`wordo prompt`（只装配提示词，便于审阅）· `wordo ask`（真调模型，含重试）——M4 跨模型一致性测试的基础设施

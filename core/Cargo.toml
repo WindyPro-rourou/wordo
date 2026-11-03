@@ -3,7 +3,7 @@ name = "wordo-core"
 version = "0.1.0"
 edition = "2021"
 license = "LicenseRef-Proprietary"
-description = "WORDO 学习系统核心：学科包校验 / 同步 / 调度（闭源）"
+description = "WORDO 学习系统核心：学科包校验 / 模型接入 / 同步 / 调度（闭源）"
 
 [[bin]]
 name = "wordo"
@@ -12,3 +12,4 @@ path = "src/main.rs"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }

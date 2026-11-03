@@ -183,7 +183,12 @@ function renderLearn(view) {
   if (ai && ai.data) {
     const d = ai.data;
     body += `<section class="lesson-block ai-card">
-      <div class="block-label">AI 讲解 <span class="mono muted">· ${esc(ai.model || "")}${ai.ok ? "" : " · 校验未通过"}</span></div>
+      <div class="block-label">AI 讲解 <span class="mono muted">· ${esc(ai.model || "")} · 尝试 ${ai.attempts || 1} 次${ai.ok ? "" : " · 校验未通过"}</span></div>
+      ${
+        ai.first_issues && ai.first_issues.length
+          ? `<div class="issue warn">首轮被校验拦下（已自动重试修正）：${ai.first_issues.map(esc).join("；")}</div>`
+          : ""
+      }
       ${ai.issues && ai.issues.length ? ai.issues.map((s) => `<div class="issue warn">${esc(s)}</div>`).join("") : ""}
       ${d.prereq_gap ? `<div class="issue warn">先修缺口：${esc(kcName(d.prereq_gap))}</div>` : ""}
       ${mdToHtml(d.explanation_md || "")}
@@ -424,7 +429,7 @@ function renderSettings(view) {
         <span class="mono muted" id="s-status"></span>
       </div>
       <p class="settings-note mono">配置文件：${esc(state.configPath || "")}</p>
-      <p class="settings-note muted">提示：NVIDIA NIM 的 Base URL 为 <code>https://integrate.api.nvidia.com/v1</code>，模型如 <code>deepseek-ai/deepseek-r1</code>。</p>
+      <p class="settings-note muted">提示：NVIDIA NIM 的 Base URL 为 <code>https://integrate.api.nvidia.com/v1</code>，实测可用模型如 <code>deepseek-ai/deepseek-v4.1-flash</code>、<code>nvidia/nemotron-3-super-120b-a12b</code>（清单以 <code>GET /v1/models</code> 为准）。</p>
     </div>`;
 
   const provSel = view.querySelector("#s-provider");

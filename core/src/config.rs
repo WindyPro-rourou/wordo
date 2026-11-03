@@ -27,9 +27,15 @@ pub struct AppConfig {
 /// 内置提供方预设（纯 API；OpenAI 兼容协议）
 pub fn presets() -> Value {
     json!([
+        // 模型清单以 GET /v1/models 实测为准（2026-11）：EOL 的 llama-3.3-70b 等已移除
         { "id": "nvidia", "label": "NVIDIA NIM", "baseUrl": "https://integrate.api.nvidia.com/v1",
-          "models": ["deepseek-ai/deepseek-r1", "meta/llama-3.3-70b-instruct",
-                     "qwen/qwen2.5-72b-instruct", "nvidia/llama-3.1-nemotron-70b-instruct"] },
+          "models": ["deepseek-ai/deepseek-v4.1-flash",
+                     "nvidia/nemotron-3-super-120b-a12b",
+                     "nvidia/nemotron-3.5-lightning-30b-a3b",
+                     "moonshotai/kimi-k2.6",
+                     "z-ai/glm-5.3-flash",
+                     "openai/gpt-oss-20b",
+                     "mistralai/mistral-large-4-1t-a52b"] },
         { "id": "deepseek", "label": "DeepSeek", "baseUrl": "https://api.deepseek.com/v1",
           "models": ["deepseek-chat", "deepseek-reasoner"] },
         { "id": "moonshot", "label": "Kimi (Moonshot)", "baseUrl": "https://api.moonshot.cn/v1",
@@ -59,4 +65,16 @@ pub fn save(path: &Path, cfg: &AppConfig) -> Result<(), String> {
 
 pub fn active_provider(cfg: &AppConfig) -> Option<ProviderCfg> {
     cfg.providers.get(cfg.active).cloned()
+}
+
+/// 默认配置文件位置：优先 WORDO_CONFIG，其次 Windows 的 %APPDATA%\app.wordo.desktop\config.json
+/// （须与 Tauri identifier 保持一致；CLI 与 GUI 共用同一份配置）
+pub fn default_path() -> std::path::PathBuf {
+    if let Ok(p) = std::env::var("WORDO_CONFIG") {
+        if !p.trim().is_empty() {
+            return std::path::PathBuf::from(p);
+        }
+    }
+    let base = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+    std::path::PathBuf::from(base).join("app.wordo.desktop").join("config.json")
 }
