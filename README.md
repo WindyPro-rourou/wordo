@@ -1,3 +1,5 @@
+[![CI](https://github.com/WindyPro-rourou/wordo/actions/workflows/ci.yml/badge.svg)](https://github.com/WindyPro-rourou/wordo/actions/workflows/ci.yml)
+
 # 去中心化分布式跨平台自进化 AI 学习系统
 
 > **当前状态：资料收集完成 · 架构框架已定稿至 v2**（2026-11-02）
