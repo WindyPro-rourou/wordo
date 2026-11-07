@@ -57,10 +57,9 @@ async function waitMeReady(page) {
 }
 
 const TABS = [
-  { key: "home", label: "首页" },
-  { key: "learn", label: "学习" },
+  { key: "chat", label: "对话" },
   { key: "me", label: "我的" },
-  { key: "items", label: "题目" },
+  { key: "items", label: "题库" },
   { key: "tree", label: "知识树" },
   { key: "report", label: "校验报告" },
   { key: "settings", label: "设置" },
@@ -151,24 +150,37 @@ try {
       if (!report.tabsSeen.includes(t.key)) report.tabsSeen.push(t.key);
     }
 
-    // 交互：学习页点第一个练习选项 → 检查记账结果行出现
+    // 交互：在对话里发一句「我该复习什么」→ 应出现 assistant 回复（不调模型，只读账本）
     try {
-      const backSel = (await page.locator('.tabbar-btn[data-tab="learn"]').isVisible().catch(() => false))
-        ? '.tabbar-btn[data-tab="learn"]'
-        : '.tab[data-tab="learn"]';
-      await tap(page, backSel, vres.occlusions);
-      await page.waitForTimeout(400);
-      const hasOpt = await page.locator(".q-card .q-opt[data-correct]").count();
-      if (hasOpt) {
-        await tap(page, ".q-card .q-opt[data-correct]", vres.occlusions);
-        await page.waitForTimeout(1800);
-        const note = await page.locator(".q-card .me-ans").first().textContent().catch(() => "");
-        vres.answerNote = (note || "").trim().slice(0, 200);
-        const shot2 = path.join(OUT, `r${ROUND}-${vp.name}-answered.png`);
+      const chatSel = (await page.locator('.tabbar-btn[data-tab="chat"]').isVisible().catch(() => false))
+        ? '.tabbar-btn[data-tab="chat"]'
+        : '.tab[data-tab="chat"]';
+      await tap(page, chatSel, vres.occlusions);
+      await page.waitForTimeout(500);
+      const hasComposer = await page.evaluate(() => !!document.querySelector("#chat-input"));
+      if (hasComposer) {
+        // 每个视口用独立新会话，避免互相污染
+        const nb = await page.$("#btn-new-chat");
+        if (nb) { await page.evaluate(() => document.querySelector("#btn-new-chat").click()); await page.waitForTimeout(700); }
+        const before = await page.evaluate(() => document.querySelectorAll(".msg").length);
+        await page.fill("#chat-input", "我该复习什么");
+        await page.press("#chat-input", "Enter");
+        await page.waitForTimeout(2000);
+        const after = await page.evaluate(() => document.querySelectorAll(".msg").length);
+        vres.chat = {
+          sent: true,
+          before,
+          after,
+          lastAssistant: (await page.evaluate(() => {
+            const arr = [...document.querySelectorAll(".msg.assistant")];
+            return arr.length ? arr[arr.length - 1].innerText.slice(0, 120).replace(/\n+/g, " | ") : "";
+          })) || "",
+        };
+        const shot2 = path.join(OUT, `r${ROUND}-${vp.name}-chat-sent.png`);
         await page.screenshot({ path: shot2, fullPage: false });
         vres.answeredShot = path.basename(shot2);
       } else {
-        vres.answerNote = "(学习页没有可点的练习选项)";
+        vres.chat = { sent: false, reason: "没有输入框" };
       }
     } catch (e) { vres.answerError = String(e.message || e); }
 

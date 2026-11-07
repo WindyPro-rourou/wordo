@@ -541,6 +541,100 @@ function checkOutput(task, v, kcIds) {
   return e;
 }
 
+/* ══════════ 会话（chat-first） ══════════ */
+
+const chatsDir = (d) => path.join(domainRoot(d), "chats");
+const chatPath = (d, id) => path.join(chatsDir(d), `${id}.json`);
+const safeId = (id) => !!id && id.length <= 64 && /^[A-Za-z0-9_-]+$/.test(id);
+
+export function chatList(domain) {
+  const dir = chatsDir(domain);
+  if (!exists(dir)) return { chats: [] };
+  const list = [];
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".json"))) {
+    try {
+      const c = readJson(path.join(dir, f));
+      const lastUser = [...(c.messages || [])].reverse().find((m) => m.role === "user");
+      list.push({ id: c.id, title: (c.title || "").trim() || (lastUser ? lastUser.text : ""), updated: c.updated, pack: c.pack || "", count: (c.messages || []).length });
+    } catch {}
+  }
+  list.sort((a, b) => String(b.updated).localeCompare(String(a.updated)));
+  return { chats: list };
+}
+
+export function chatGet(domain, id) {
+  if (!safeId(id)) throw new Error("非法会话 id");
+  const p = chatPath(domain, id);
+  if (!exists(p)) throw new Error(`找不到会话 ${id}`);
+  return readJson(p);
+}
+
+export function chatNew(domain, title) {
+  ensureDir(chatsDir(domain));
+  const c = { id: `c${Date.now()}`, title: (title || "").trim(), created: nowIso(), updated: nowIso(), pack: "", messages: [] };
+  fs.writeFileSync(chatPath(domain, c.id), JSON.stringify(c, null, 2), "utf8");
+  return c;
+}
+
+export function chatAppend(domain, id, msg = {}) {
+  ensureDir(chatsDir(domain));
+  let c;
+  if (safeId(id) && exists(chatPath(domain, id))) c = readJson(chatPath(domain, id));
+  else c = { id: safeId(id) ? id : `c${Date.now()}`, title: "", created: nowIso(), updated: nowIso(), pack: "", messages: [] };
+  const m = { role: msg.role || "user", kind: msg.kind || "text", text: msg.text || "", ts: nowIso(), data: msg.data ?? null, pack: msg.pack || "" };
+  if (m.pack) c.pack = m.pack;
+  (c.messages = c.messages || []).push(m);
+  if (!String(c.title).trim() && m.role === "user" && m.text.trim()) c.title = [...m.text].slice(0, 24).join("");
+  c.updated = nowIso();
+  fs.writeFileSync(chatPath(domain, c.id), JSON.stringify(c, null, 2), "utf8");
+  return c;
+}
+
+export function chatRename(domain, id, title) {
+  const c = chatGet(domain, id);
+  c.title = [...String(title || "").trim()].slice(0, 60).join("");
+  c.updated = nowIso();
+  fs.writeFileSync(chatPath(domain, id), JSON.stringify(c, null, 2), "utf8");
+  return { renamed: true, id, title: c.title };
+}
+
+export function chatDelete(domain, id) {
+  if (!safeId(id)) throw new Error("非法会话 id");
+  const p = chatPath(domain, id);
+  if (exists(p)) fs.unlinkSync(p);
+  return { deleted: true, id };
+}
+
+/** 从一句话判定学科：知识点名命中(5) > 学科名(3) > id(2) > 学科简称(1) */
+export function detectSubject(domain, text, packsDir) {
+  const t = String(text || "").toLowerCase();
+  const dir = packsDir || state.packsDir;
+  let best = { pack: "", name: "", why: "", score: 0 };
+  if (!exists(dir)) return best;
+  for (const name of fs.readdirSync(dir).sort()) {
+    const p = path.join(dir, name);
+    if (!exists(path.join(p, "subject.json"))) continue;
+    let meta = {};
+    try { meta = readJson(path.join(p, "subject.json")); } catch {}
+    const nm = meta.name || "";
+    let score = 0, why = "";
+    try {
+      for (const kc of readJson(path.join(p, "tree", "kc.json"))) {
+        if (kc.name && [...kc.name].length >= 2 && t.includes(String(kc.name).toLowerCase())) {
+          score += 5;
+          if (!why) why = `命中知识点「${kc.name}」`;
+        }
+      }
+    } catch {}
+    if (nm && t.includes(nm.toLowerCase())) { score += 3; if (!why) why = `提到学科「${nm}」`; }
+    const short = nm.replace("高中", "").replace("初中", "");
+    if (short && t.includes(short.toLowerCase())) { score += 1; if (!why) why = `提到「${short}」`; }
+    if (t.includes(name.toLowerCase())) score += 2;
+    if (score > best.score) best = { pack: name, name: nm || name, why, score };
+  }
+  return best;
+}
+
 export async function invoke(name, args = {}) {
   const packsDir = args.packsDir || state.packsDir;
   const domain = args.domain || state.domain;
@@ -605,6 +699,13 @@ export async function invoke(name, args = {}) {
       writeUserMd(domain, packsDir);
       return { processed, pending_before: pending.length };
     }
+    case "chat_list": return chatList(domain);
+    case "chat_get": return chatGet(domain, args.id);
+    case "chat_new": return chatNew(domain, args.title);
+    case "chat_append": return chatAppend(domain, args.id, args.msg);
+    case "chat_rename": return chatRename(domain, args.id, args.title);
+    case "chat_delete": return chatDelete(domain, args.id);
+    case "detect_subject": return detectSubject(domain, args.text, packsDir);
     case "learn_plan": {
       const d = ensureDomain(domain); const me = nodeId(domain);
       if (args.action === "add") {

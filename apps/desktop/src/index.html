@@ -31,18 +31,21 @@
 
   <main>
     <aside id="sidebar">
-      <h2>学科包</h2>
-      <div id="pack-list"></div>
+      <div class="side-head">
+        <button id="btn-new-chat" class="btn new-chat">＋ 新建对话</button>
+      </div>
+      <div id="chat-list" class="chat-list" aria-label="对话历史"></div>
+      <div class="side-foot">
+        <button class="side-link" data-tab="me">我的账本</button>
+        <button class="side-link" data-tab="settings">设置</button>
+      </div>
     </aside>
 
     <section id="content">
       <nav id="tabs" class="hidden">
-        <button class="tab active" data-tab="home">首页</button>
-        <button class="tab" data-tab="learn">学习</button>
+        <button class="tab active" data-tab="chat">对话</button>
         <button class="tab" data-tab="me">我的</button>
-        <button class="tab" data-tab="items">题目</button>
-        <button class="tab" data-tab="tree">知识树</button>
-        <button class="tab" data-tab="report">校验报告</button>
+        <button class="tab" data-tab="settings">设置</button>
       </nav>
       <div id="view"></div>
     </section>
@@ -50,13 +53,9 @@
 
   <!-- 手机端底部导航 -->
   <nav id="tabbar" class="tabbar" aria-label="主导航">
-    <button class="tabbar-btn active" data-tab="home">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 8 4 4-4 4"/><path d="M13 16h6"/></svg>
-      <span>首页</span>
-    </button>
-    <button class="tabbar-btn" data-tab="learn">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20v3H6.5A2.5 2.5 0 0 1 4 20.5z"/></svg>
-      <span>学习</span>
+    <button class="tabbar-btn active" data-tab="chat">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-5.5A8 8 0 1 1 21 12z"/></svg>
+      <span>对话</span>
     </button>
     <button class="tabbar-btn" data-tab="me">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>

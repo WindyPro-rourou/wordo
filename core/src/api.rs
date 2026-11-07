@@ -232,3 +232,46 @@ pub fn learn_plan(domain: &str, action: &str, text: Option<&str>, task_id: Optio
         _ => Ok(json!({ "plan": learn::plan_list(&d) })),
     }
 }
+
+/* ══════════ 会话（chat-first：侧栏=对话历史，学科自动判定） ══════════ */
+
+pub fn chat_list(domain: &str) -> Result<Value, String> {
+    Ok(crate::chat::list(&resolve_domain(domain)))
+}
+
+pub fn chat_get(domain: &str, id: &str) -> Result<Value, String> {
+    crate::chat::get(&resolve_domain(domain), id)
+}
+
+pub fn chat_new(domain: &str, title: &str) -> Result<Value, String> {
+    crate::chat::new_chat(&resolve_domain(domain), title)
+}
+
+pub fn chat_append(domain: &str, id: &str, msg: &Value) -> Result<Value, String> {
+    crate::chat::append(&resolve_domain(domain), id, msg)
+}
+
+pub fn chat_rename(domain: &str, id: &str, title: &str) -> Result<Value, String> {
+    crate::chat::rename(&resolve_domain(domain), id, title)
+}
+
+pub fn chat_delete(domain: &str, id: &str) -> Result<Value, String> {
+    crate::chat::delete(&resolve_domain(domain), id)
+}
+
+/// 依据一句话判定学科：返回 { pack, name, why, score }
+pub fn detect_subject(domain: &str, text: &str, packs_dir: &str) -> Result<Value, String> {
+    let packs = resolve_packs(packs_dir);
+    let (pack, why, score) = crate::chat::detect_subject(text, &packs);
+    let name = if pack.is_empty() {
+        String::new()
+    } else {
+        let meta = std::fs::read_to_string(packs.join(&pack).join("subject.json")).unwrap_or_default();
+        serde_json::from_str::<Value>(&meta)
+            .ok()
+            .and_then(|v| v.get("name").and_then(|x| x.as_str()).map(|s| s.to_string()))
+            .unwrap_or_else(|| pack.clone())
+    };
+    let _ = domain;
+    Ok(serde_json::json!({ "pack": pack, "name": name, "why": why, "score": score }))
+}

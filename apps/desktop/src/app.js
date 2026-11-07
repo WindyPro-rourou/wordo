@@ -12,8 +12,15 @@ const state = {
   presets: [],
   configPath: "",
   learn: { kcId: null, ai: null, aiLoading: false, aiError: null, pick: null, classify: null, classifyLoading: false },
-  /* 首页控制台：输入框内容 / 提示消息 / 取数中 */
+  /* 首页控制台（旧，保留兼容） */
   home: { q: "", msg: "", loading: false },
+  /* 会话（chat-first） */
+  chats: [],
+  currentChatId: null,
+  chat: null,
+  chatBusy: false,
+  chatDraft: "",
+  chatMsg: "",
   /* 「我的」= 学习账本视图：state(user.md) / due(薄弱+今日队列) / sync(域同步结果) / msg(操作反馈) */
   me: { state: null, due: null, sync: null, review: null, msg: "", error: null, loading: false, busy: null, seq: 0, view: null },
 };
@@ -31,6 +38,11 @@ async function boot() {
   });
   document.querySelectorAll(".tabbar-btn").forEach((t) => {
     t.onclick = () => setTab(t.dataset.tab);
+  });
+  const newChatBtn = document.getElementById("btn-new-chat");
+  if (newChatBtn) newChatBtn.onclick = () => newChat();
+  document.querySelectorAll(".side-link[data-tab]").forEach((b) => {
+    b.onclick = () => setTab(b.dataset.tab);
   });
   const sb = document.getElementById("subject-btn");
   if (sb) sb.onclick = openSubjectSheet;
@@ -52,11 +64,12 @@ async function boot() {
   });
   await loadConfig();
   await refreshPacks();
-  if (state.packs.length) {
-    await openPack(state.packs[0].path);
-  }
-  // 一律从首页控制台进入（不依赖是否已选学科包）
-  setTab("home");
+  // 对话优先：打开最近一次会话；没有就新建
+  await loadChats();
+  const first = state.chats[0];
+  if (first) await openChat(first.id);
+  else await newChat();
+  setTab("chat");
 }
 
 function setTab(tab) {
@@ -64,7 +77,7 @@ function setTab(tab) {
   document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === tab));
   document.querySelectorAll(".tabbar-btn").forEach((x) => x.classList.toggle("active", x.dataset.tab === tab));
   document.body.dataset.tab = tab;
-  document.getElementById("tabs").classList.toggle("hidden", !state.current && tab !== "settings" && tab !== "me");
+  document.getElementById("tabs").classList.remove("hidden");
   render();
   const v = document.getElementById("view");
   if (v) v.scrollTop = 0;
@@ -96,10 +109,11 @@ async function refreshPacks() {
 
 /* ══════════ 左侧学科包列表 ══════════ */
 function renderPackList() {
-  const el = document.getElementById("pack-list");
-  el.innerHTML = "";
-  // 手机端顶栏的「当前学科」与选择浮层
+  // 侧栏已改为「对话历史」；这里只负责顶栏学科胶囊与选择浮层
   paintSubjectBar();
+  const el = document.getElementById("pack-list");
+  if (!el) return;
+  el.innerHTML = "";
   if (!state.packs.length) {
     el.innerHTML = `<div class="empty">该目录下没有发现学科包</div>`;
     return;
@@ -393,7 +407,7 @@ function runHomeCommand(raw) {
 
 function render() {
   const view = document.getElementById("view");
-  if (state.tab === "home") return renderHome(view);
+  if (state.tab === "chat") return renderChat(view);
   if (state.tab === "settings") return renderSettings(view);
   if (state.tab === "me") return renderMe(view);
   if (!state.current) return viewMessage("从左侧选择一个学科包");
@@ -401,6 +415,447 @@ function render() {
   else if (state.tab === "items") renderItems(view);
   else if (state.tab === "tree") renderTree(view);
   else renderReport(view);
+}
+
+/* ══════════ 会话（chat-first：侧栏=对话历史，学科自动判定） ══════════ */
+
+function packOf(subjectId) {
+  return (state.packs || []).find((p) => p.subjectId === subjectId) || null;
+}
+
+async function loadChats() {
+  try {
+    const r = await invoke("chat_list", { domain: getDomain() });
+    state.chats = (r && r.chats) || [];
+  } catch (e) {
+    state.chats = [];
+  }
+  renderChatList();
+}
+
+function renderChatList() {
+  const el = document.getElementById("chat-list");
+  if (!el) return;
+  if (!state.chats.length) {
+    el.innerHTML = `<div class="chat-empty">还没有对话</div>`;
+    return;
+  }
+  el.innerHTML = state.chats
+    .map(
+      (c) => `<button class="chat-item ${c.id === state.currentChatId ? "active" : ""}" data-id="${esc(c.id)}">
+        <span class="chat-item-t">${esc(c.title || "新对话")}</span>
+        <span class="chat-item-m mono">${c.pack ? esc(c.pack) : "未定学科"} · ${c.count} 条</span>
+        <span class="chat-item-x" data-del="${esc(c.id)}" title="删除会话">×</span>
+      </button>`
+    )
+    .join("");
+  el.querySelectorAll(".chat-item").forEach((b) => {
+    b.onclick = (e) => {
+      if (e.target.dataset && e.target.dataset.del) return;
+      openChat(b.dataset.id);
+    };
+  });
+  el.querySelectorAll("[data-del]").forEach((x) => {
+    x.onclick = async (e) => {
+      e.stopPropagation();
+      try {
+        await invoke("chat_delete", { domain: getDomain(), id: x.dataset.del });
+        const wasCurrent = state.currentChatId === x.dataset.del;
+        await loadChats();
+        if (wasCurrent) {
+          if (state.chats[0]) await openChat(state.chats[0].id);
+          else await newChat();
+        } else if (state.tab === "chat") render();
+      } catch (err) {
+        state.chatMsg = "删除失败：" + readableErr(err);
+        render();
+      }
+    };
+  });
+}
+
+async function newChat() {
+  try {
+    const c = await invoke("chat_new", { domain: getDomain(), title: "" });
+    state.currentChatId = c.id;
+    state.chat = c;
+    state.chatDraft = "";
+    await loadChats();
+    setTab("chat");
+  } catch (e) {
+    state.chatMsg = "新建对话失败：" + readableErr(e);
+    render();
+  }
+}
+
+async function openChat(id) {
+  state.currentChatId = id;
+  try {
+    state.chat = await invoke("chat_get", { domain: getDomain(), id });
+  } catch (e) {
+    state.chat = null;
+    state.chatMsg = "读取会话失败：" + readableErr(e);
+  }
+  if (state.chat && state.chat.pack) await ensurePack(state.chat.pack);
+  renderChatList();
+  setTab("chat");
+}
+
+async function ensurePack(subjectId) {
+  if (!subjectId) return false;
+  if (state.current && state.current.meta && state.current.meta.id === subjectId) return true;
+  const p = packOf(subjectId);
+  if (!p) return false;
+  try {
+    state.current = await invoke("load_pack", { packPath: p.path });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 讲解卡片（对话里的一条 assistant 消息） */
+function explainCard(d, meta) {
+  if (!d) return "";
+  const fu = d.followup_question;
+  return `<div class="msg-card">
+    ${meta ? `<div class="msg-card-head mono">讲解 · ${esc(meta.model || "")}${meta.attempts ? " · 尝试 " + meta.attempts + " 次" : ""}</div>` : ""}
+    ${d.prereq_gap ? `<div class="issue warning">先修缺口：${esc(kcName(d.prereq_gap))}</div>` : ""}
+    ${mdToHtml(d.explanation_md || "")}
+    ${d.worked_example ? `<h3>例题</h3>${mdToHtml(d.worked_example)}` : ""}
+    ${arrOf(d.misconceptions).length ? `<h3>常见误解</h3><ul>${arrOf(d.misconceptions).map((m) => `<li>${esc(m)}</li>`).join("")}</ul>` : ""}
+    ${
+      fu
+        ? `<div class="followup">
+            <div class="block-label">检测题</div>
+            <div class="q-stem">${esc(fu.stem || "")}</div>
+            ${arrOf(fu.options)
+              .map((o, i) => {
+                const key = "ABCD"[i];
+                return `<button class="q-opt" data-quiz-opt="${key}" data-answer="${esc(String(fu.answer || "").toUpperCase())}"><span class="key">${key}</span>${esc(String(o).replace(/^[A-D][.、]\s*/, ""))}</button>`;
+              })
+              .join("")}
+            <div class="quiz-note"></div>
+          </div>`
+        : ""
+    }
+  </div>`;
+}
+
+function quizCard(data) {
+  if (!data || !data.item) return "";
+  const it = data.item;
+  const kc = data.kc || {};
+  return `<div class="msg-card" data-item="${esc(it.id)}" data-pack="${esc(it.pack || kc.pack || "")}" data-kc="${esc(kc.kc_id || (it.kc_ids || [])[0] || "")}">
+    <div class="msg-card-head mono">练习 · ${esc(kc.kc_name || "")}</div>
+    <div class="q-stem">${esc(it.stem)}</div>
+    ${arrOf(it.options)
+      .map((o) => `<button class="q-opt" data-quiz-opt="${esc(o.key)}" data-correct="${o.key === it.answer ? "1" : "0"}"><span class="key">${esc(o.key)}</span>${esc(o.text)}</button>`)
+      .join("")}
+    <div class="quiz-note"></div>
+  </div>`;
+}
+
+function msgHtml(m) {
+  if (m.role === "user") return `<div class="msg user"><div class="bubble">${esc(m.text)}</div></div>`;
+  if (m.role === "system" || m.kind === "note") return `<div class="msg-note mono">${esc(m.text)}</div>`;
+  if (m.kind === "explain") return `<div class="msg assistant">${explainCard(m.data, m.data && m.data.__meta)}</div>`;
+  if (m.kind === "quiz") return `<div class="msg assistant">${quizCard(m.data)}</div>`;
+  return `<div class="msg assistant"><div class="bubble md">${mdToHtml(m.text || "")}</div></div>`;
+}
+
+function welcomeChat() {
+  const d = state.me.due;
+  const recap = d ? `今日作答 ${d.today_answers} · 错 ${d.today_wrong} · 薄弱 ${(d.weak || []).length} · 到期 ${(d.due || []).length}` : "";
+  const dueKc = d && d.due && d.due[0];
+  const weakKc = d && d.weak && d.weak[0];
+  const chips = [];
+  if (dueKc) chips.push(`我该复习什么？`);
+  if (weakKc) chips.push(`帮我补一下${weakKc.kc_name}`);
+  chips.push("讲讲一般过去时");
+  chips.push("给我出两道题");
+  return `<div class="chat-welcome">
+    <div class="console-bar mono"><span class="dot"></span><span>wordo</span><span class="sep">·</span><span>新对话</span>${recap ? `<span class="console-bar-right">${esc(recap)}</span>` : ""}</div>
+    <h1 class="console-title">${greetingWord()}，今天想学点什么？<span class="caret">▌</span></h1>
+    <div class="console-sub">直接说就行——我会自己判断学科。也可以点下面的建议：</div>
+    <div class="say-chips">${chips.map((t) => `<button class="say-chip" data-say="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+  </div>`;
+}
+
+function renderChat(view) {
+  const c = state.chat;
+  const msgs = (c && c.messages) || [];
+  const subj = c && c.pack ? (packOf(c.pack) || {}).name || c.pack : "";
+  view.innerHTML = `<div class="chat">
+    <div class="chat-head">
+      <div class="chat-title">${c && c.title ? esc(c.title) : "新对话"}</div>
+      <div class="chat-subj mono">${subj ? "学科：" + esc(subj) + " · 自动判定" : "学科：待第一句话自动判定"}</div>
+    </div>
+    <div class="chat-thread" id="chat-thread">
+      ${msgs.length ? msgs.map(msgHtml).join("") : welcomeChat()}
+      ${state.chatBusy ? `<div class="msg assistant"><div class="bubble"><span class="typing"><i></i><i></i><i></i></span></div></div>` : ""}
+      ${state.chatMsg ? `<div class="console-msg">${esc(state.chatMsg)}</div>` : ""}
+    </div>
+    <form class="composer" id="composer">
+      <textarea id="chat-input" rows="1" placeholder="${isPhone() ? "说点什么…" : "说点什么，例如「讲讲一般过去时」「我该复习什么」…"}"></textarea>
+      <button class="btn" type="submit" ${state.chatBusy ? "disabled" : ""}>发送</button>
+    </form>
+    <div class="composer-hint mono">Enter 发送 · Shift+Enter 换行</div>
+  </div>`;
+
+  const form = view.querySelector("#composer");
+  const ta = view.querySelector("#chat-input");
+  if (ta) {
+    ta.value = state.chatDraft || "";
+    autoGrow(ta);
+    ta.focus();
+    ta.oninput = () => { autoGrow(ta); state.chatDraft = ta.value; };
+    ta.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (form) form.requestSubmit(); } };
+  }
+  if (form) form.onsubmit = (e) => { e.preventDefault(); const t = (ta.value || "").trim(); if (t && !state.chatBusy) sendMessage(t); };
+  view.querySelectorAll("[data-say]").forEach((b) => { b.onclick = () => sendMessage(b.dataset.say); });
+  bindQuiz(view);
+  // 有新消息时滚到底
+  const th = view.querySelector("#chat-thread");
+  if (th) th.scrollTop = th.scrollHeight;
+}
+
+function autoGrow(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 160) + "px";
+}
+
+/** 对话里的选项判分：写账本 + 显示结果；答错提供「让 AI 分析错因」 */
+function bindQuiz(view) {
+  view.querySelectorAll(".q-opt[data-quiz-opt]").forEach((btn) => {
+    btn.onclick = async () => {
+      const card = btn.closest(".msg-card");
+      if (!card || card.dataset.done === "1") return;
+      const note = card.querySelector(".quiz-note");
+      const isQuizMsg = !!card.dataset.item;
+      const correct = isQuizMsg ? btn.dataset.correct === "1" : String(btn.dataset.quizOpt) === String(btn.dataset.answer || "");
+      btn.classList.add(correct ? "correct" : "wrong");
+      if (!isQuizMsg) {
+        // 讲解里的检测题：只判对错，不写账本（没有 item id）
+        if (note) note.innerHTML = correct ? `<span class="ok-mark">回答正确</span>` : `<span class="no-mark">不对，正确答案是 ${esc(btn.dataset.answer || "")}</span>`;
+        card.dataset.done = "1";
+        return;
+      }
+      card.dataset.done = "1";
+      card.querySelectorAll(".q-opt[data-quiz-opt]").forEach((b) => { b.disabled = true; });
+      try {
+        const res = await invoke("record_answer", {
+          domain: getDomain(),
+          packsDir: packsDirValue(),
+          pack: card.dataset.pack,
+          itemId: card.dataset.item,
+          answered: btn.dataset.quizOpt,
+          source: "chat",
+        });
+        const k = res.kc || {};
+        if (note)
+          note.innerHTML = `${correct ? CHECK_SVG : CROSS_SVG}<span>${correct ? "正确" : "正确答案 " + esc(String(res.correct || ""))} · 本知识点 对/错 ${esc(String(k.correct ?? 0))}/${esc(String(k.wrong ?? 0))} · 掌握度 ${esc(pct(k.mastery))}</span>`;
+        if (!correct) {
+          const b = document.createElement("button");
+          b.className = "btn btn-ghost";
+          b.textContent = "让 AI 分析错因";
+          b.onclick = () => askWhyWrong(card, btn.dataset.quizOpt);
+          if (note) note.appendChild(b);
+        }
+        state.me.due = null;
+      } catch (e) {
+        if (note) note.textContent = "记账失败：" + readableErr(e);
+      }
+    };
+  });
+}
+
+async function askWhyWrong(card, answered) {
+  const itemId = card.dataset.item;
+  const packId = card.dataset.pack;
+  const kcId = card.dataset.kc;
+  const it = ((state.current && state.current.items) || []).find((x) => x.id === itemId);
+  if (!it) return;
+  await appendAssistantNote("正在分析错因…");
+  try {
+    const p = packOf(packId);
+    const res = await invoke("ask_model", {
+      req: {
+        task: "classify-error",
+        packPath: p ? p.path : "",
+        domain: getDomain(),
+        packsDir: packsDirValue(),
+        payload: {
+          item_id: itemId,
+          stem: it.stem,
+          options: it.options,
+          correct: it.answer,
+          answered,
+          kc_id: kcId,
+        },
+      },
+    });
+    const d = (res && res.data) || null;
+    const txt = d
+      ? `**错因**：${labelErrorType(d.error_type)}${d.root_cause_kc_id ? `（根因：${kcName(d.root_cause_kc_id)}）` : ""}\n\n**建议**：${labelAction(d.suggested_action)}　置信度 ${d.confidence}\n\n${d.notes || ""}`
+      : "（模型没有给出可用的分析）";
+    state.chat = await invoke("chat_append", { domain: getDomain(), id: state.currentChatId, msg: { role: "assistant", kind: "text", text: txt, pack: packId } });
+    await loadChats();
+    render();
+  } catch (e) {
+    state.chatMsg = "分析失败：" + readableErr(e);
+    render();
+  }
+}
+
+async function appendAssistantNote(text) {
+  try {
+    state.chat = await invoke("chat_append", { domain: getDomain(), id: state.currentChatId, msg: { role: "system", kind: "note", text } });
+  } catch {}
+}
+
+/** 意图判定：出题 / 讲解 / 引导 */
+function decideIntent(text) {
+  const t = String(text || "");
+  // 「我该复习什么 / 怎么学 / 计划」属于求建议，优先于「出题」
+  if (/(我该|该复习|复习什么|学什么|怎么学|建议|计划)/.test(t)) return "review-advice";
+  if (/(做题|练习|练一练|出题|出两道|测我|考我|几道|来一道|再来一题)/.test(t)) return "quiz";
+  if (/(讲|解释|什么是|说说|教我|帮我理解|补一下|不会)/.test(t)) return "explain";
+  if (findKcInCurrent(t)) return "explain";
+  return "guide";
+}
+
+function findKcInCurrent(text) {
+  const kcs = (state.current && state.current.kcs) || [];
+  const t = String(text || "");
+  return kcs.find((k) => t.includes(k.name)) || kcs.find((k) => k.name.includes(t) && t.length >= 2) || null;
+}
+
+async function sendMessage(text) {
+  const domain = getDomain();
+  const packsDir = packsDirValue();
+  state.chatDraft = "";
+  state.chatMsg = "";
+  try {
+    if (!state.currentChatId) {
+      const c = await invoke("chat_new", { domain, title: "" });
+      state.currentChatId = c.id;
+    }
+    state.chat = await invoke("chat_append", { domain, id: state.currentChatId, msg: { role: "user", kind: "text", text } });
+    state.chatBusy = true;
+    render();
+
+    // 学科自动判定（只在会话还没有学科时做一次）
+    let pack = (state.chat && state.chat.pack) || "";
+    if (!pack) {
+      let det = null;
+      try { det = await invoke("detect_subject", { domain, text, packsDir }); } catch {}
+      if (det && det.score > 0) {
+        pack = det.pack;
+        state.chat = await invoke("chat_append", { domain, id: state.currentChatId, msg: { role: "system", kind: "note", text: `已根据这句话选定学科：${det.name}（${det.why || "语义匹配"}）`, pack } });
+      }
+    }
+    if (pack) await ensurePack(pack);
+
+    const intent = decideIntent(text);
+    if (intent === "quiz") await doQuiz(pack);
+    else if (intent === "explain") await doExplain(pack, text);
+    else if (intent === "review-advice") await doReviewAdvice(pack);
+    else await doGuide(pack);
+  } catch (e) {
+    state.chatMsg = "出错：" + readableErr(e);
+  }
+  state.chatBusy = false;
+  await loadChats();
+  if (state.tab === "chat") render();
+}
+
+async function doQuiz(pack) {
+  let kc = null;
+  try {
+    const due = await invoke("learn_due", { domain: getDomain(), packsDir: packsDirValue() });
+    state.me.due = due || null;
+    const cand = (due && (due.due[0] || due.weak[0])) || null;
+    if (cand) {
+      kc = { kc_id: cand.kc_id, kc_name: cand.kc_name, pack: cand.pack };
+      if (!pack) pack = cand.pack;
+      await ensurePack(pack);
+    }
+  } catch {}
+  if (!kc && state.current) {
+    const k = (state.current.kcs || [])[0];
+    if (k) kc = { kc_id: k.id, kc_name: k.name, pack: state.current.meta.id };
+  }
+  if (!kc || !pack) {
+    return doGuide(pack, "还不知道你想练哪一科。先说一句「数学」或「英语」，我就知道从哪出题了。");
+  }
+  const q = await invoke("learn_queue", { domain: getDomain(), packsDir: packsDirValue(), kcId: kc.kc_id, n: 1 });
+  const item = (q && q.items && q.items[0]) || null;
+  if (!item) {
+    state.chat = await invoke("chat_append", { domain: getDomain(), id: state.currentChatId, msg: { role: "assistant", kind: "text", text: `「${kc.kc_name}」暂时没有题目可出。`, pack } });
+    return;
+  }
+  state.chat = await invoke("chat_append", {
+    domain: getDomain(),
+    id: state.currentChatId,
+    msg: { role: "assistant", kind: "quiz", text: `来一道「${kc.kc_name}」的题：`, data: { item, kc }, pack },
+  });
+}
+
+async function doExplain(pack, text) {
+  const kc = findKcInCurrent(text);
+  if (!pack || !state.current || !kc) {
+    const names = ((state.current && state.current.kcs) || []).slice(0, 6).map((k) => k.name);
+    return doGuide(
+      pack,
+      pack
+        ? `没认出你想讲哪个知识点。可以说：${names.map((n) => `「讲讲${n}」`).join("、")}`
+        : "先告诉我想学什么学科吧（例：「讲讲一般过去时」或「数学的单调性」）。"
+    );
+  }
+  const p = packOf(pack) || (state.current ? { path: "" } : null);
+  const res = await invoke("ask_model", {
+    req: {
+      task: "explain",
+      packPath: p ? p.path : "",
+      domain: getDomain(),
+      packsDir: packsDirValue(),
+      payload: { kc_id: kc.id, kc_name: kc.name, toc: kc.toc, learner: {} },
+    },
+  });
+  const d = (res && res.data) || null;
+  if (!d) {
+    return doGuide(pack, "模型这次没给出合格输出（" + ((res && res.issues) || []).join("；") + "）。可以在设置里换个模型再试。");
+  }
+  const meta = { model: res.model, attempts: res.attempts, __meta: undefined };
+  state.chat = await invoke("chat_append", {
+    domain: getDomain(),
+    id: state.currentChatId,
+    msg: { role: "assistant", kind: "explain", text: (d.explanation_md || "").slice(0, 80), data: { ...d, __meta: meta }, pack },
+  });
+}
+
+async function doReviewAdvice(pack) {
+  let due = null;
+  try { due = await invoke("learn_due", { domain: getDomain(), packsDir: packsDirValue() }); state.me.due = due || null; } catch {}
+  const d = due || { due: [], weak: [] };
+  if (!d.due.length && !d.weak.length) {
+    return doGuide(pack, "目前没有到期或薄弱的项。可以直接说「给我出两道题」，或者「讲讲某个知识点」。");
+  }
+  const dueTxt = d.due.map((k) => `- ${k.kc_name}（掌握度 ${pct(k.mastery)}，已到期）`).join("\n");
+  const weakTxt = d.weak.map((k) => `- ${k.kc_name}（错 ${k.wrong} 次，掌握度 ${pct(k.mastery)}）`).join("\n");
+  const txt = `按你的账本，建议先做这些：\n${d.due.length ? `\n**今日到期**\n${dueTxt}\n` : ""}${d.weak.length ? `\n**薄弱点**\n${weakTxt}\n` : ""}\n说「给我出两道题」我就按上面的顺序出。`;
+  state.chat = await invoke("chat_append", { domain: getDomain(), id: state.currentChatId, msg: { role: "assistant", kind: "text", text: txt, pack: pack || "" } });
+}
+
+async function doGuide(pack, extra) {
+  const names = ((state.current && state.current.kcs) || []).slice(0, 6).map((k) => k.name);
+  const txt =
+    extra ||
+    (pack
+      ? `我可以帮你：\n- 讲解：「讲讲${names[0] || "某个知识点"}」\n- 练习：「给我出两道题」\n- 复习建议：「我该复习什么」`
+      : "先告诉我你想学什么学科（例：「讲讲一般过去时」「数学的单调性」），我会自动切换。");
+  state.chat = await invoke("chat_append", { domain: getDomain(), id: state.currentChatId, msg: { role: "assistant", kind: "text", text: txt, pack: pack || "" } });
 }
 
 /* ══════════ 学习（内容呈现） ══════════ */

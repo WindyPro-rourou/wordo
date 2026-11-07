@@ -1,4 +1,5 @@
 pub mod api;
+pub mod chat;
 pub mod config;
 pub mod learn;
 pub mod llm;

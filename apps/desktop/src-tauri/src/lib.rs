@@ -115,6 +115,43 @@ fn learn_plan(
     api::learn_plan(&domain, &action, text.as_deref(), task_id.as_deref())
 }
 
+/* ══════════ 会话（chat-first） ══════════ */
+
+#[tauri::command]
+fn chat_list(domain: String) -> Result<Value, String> {
+    api::chat_list(&domain)
+}
+
+#[tauri::command]
+fn chat_get(domain: String, id: String) -> Result<Value, String> {
+    api::chat_get(&domain, &id)
+}
+
+#[tauri::command]
+fn chat_new(domain: String, title: String) -> Result<Value, String> {
+    api::chat_new(&domain, &title)
+}
+
+#[tauri::command]
+fn chat_append(domain: String, id: String, msg: Value) -> Result<Value, String> {
+    api::chat_append(&domain, &id, &msg)
+}
+
+#[tauri::command]
+fn chat_rename(domain: String, id: String, title: String) -> Result<Value, String> {
+    api::chat_rename(&domain, &id, &title)
+}
+
+#[tauri::command]
+fn chat_delete(domain: String, id: String) -> Result<Value, String> {
+    api::chat_delete(&domain, &id)
+}
+
+#[tauri::command]
+fn detect_subject(domain: String, text: String, packs_dir: String) -> Result<Value, String> {
+    api::detect_subject(&domain, &text, &packs_dir)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -132,7 +169,14 @@ pub fn run() {
             learn_sync,
             learn_delegate,
             learn_review,
-            learn_plan
+            learn_plan,
+            chat_list,
+            chat_get,
+            chat_new,
+            chat_append,
+            chat_rename,
+            chat_delete,
+            detect_subject
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
