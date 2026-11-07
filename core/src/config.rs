@@ -27,6 +27,10 @@ pub struct AppConfig {
 /// 内置提供方预设（纯 API；OpenAI 兼容协议）
 pub fn presets() -> Value {
     json!([
+        // 本地网关（magpie）：把多个上游择优成一条路由组，延迟低、不暴露上游 key
+        { "id": "magpie", "label": "本地网关 (magpie)", "baseUrl": "http://127.0.0.1:3425/v1",
+          "models": ["auto/deepseek-v4.1-flash", "auto/glm-5.3-flash",
+                     "auto/kimi-k3.1-pro", "auto/step-5-preview"] },
         // 模型清单以 GET /v1/models 实测为准（2026-11）：EOL 的 llama-3.3-70b 等已移除
         { "id": "nvidia", "label": "NVIDIA NIM", "baseUrl": "https://integrate.api.nvidia.com/v1",
           "models": ["deepseek-ai/deepseek-v4.1-flash",
@@ -51,7 +55,7 @@ pub fn presets() -> Value {
 pub fn load(path: &Path) -> AppConfig {
     fs::read_to_string(path)
         .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
+        .and_then(|t| serde_json::from_str(t.trim_start_matches('\u{feff}')).ok())
         .unwrap_or_default()
 }
 

@@ -1,0 +1,234 @@
+//! 对外 API 契约（唯一实现）：GUI 的 Tauri 命令、CLI 的 `wordo api`、无头预览桥
+//! 全部调用这里，保证三处行为与字段名完全一致，不会漂移。
+//!
+//! 约定：入参用 &str / &Value（与前端 JSON 一一对应），出参一律 serde_json::Value。
+
+use serde_json::{json, Value};
+use std::path::{Path, PathBuf};
+
+use crate::{config, learn, llm};
+
+/* ══════════ 路径解析 ══════════ */
+
+pub fn resolve_domain(domain: &str) -> PathBuf {
+    if domain.trim().is_empty() {
+        config::default_domain_path()
+    } else {
+        PathBuf::from(domain)
+    }
+}
+
+pub fn resolve_packs(packs_dir: &str) -> PathBuf {
+    if packs_dir.trim().is_empty() {
+        PathBuf::from("packs")
+    } else {
+        PathBuf::from(packs_dir)
+    }
+}
+
+/// 把知识点状态补上人类可读名称与所属学科包
+fn decorate(packs: &Path, list: &[learn::KcState]) -> Vec<Value> {
+    let idx = learn::kc_index(packs);
+    list.iter()
+        .map(|k| {
+            let (name, pack) = idx
+                .get(&k.kc_id)
+                .map(|(n, p)| (n.clone(), p.clone()))
+                .unwrap_or_else(|| (k.kc_id.clone(), String::new()));
+            json!({
+                "kc_id": k.kc_id,
+                "kc_name": name,
+                "pack": pack,
+                "attempts": k.attempts,
+                "correct": k.correct,
+                "wrong": k.wrong,
+                "streak": k.streak,
+                // 保留两位小数，前端直接显示成百分比
+                "mastery": (k.mastery * 100.0).round() / 100.0,
+                "due_ts": k.due_ts,
+                "mastered": k.mastered,
+                "error_types": k.error_types,
+            })
+        })
+        .collect()
+}
+
+/* ══════════ 学科包 ══════════ */
+
+pub fn list_packs(packs_dir: &str) -> Value {
+    crate::load::discover_packs(&resolve_packs(packs_dir))
+}
+
+pub fn load_pack(pack_path: &str) -> Result<Value, String> {
+    crate::load::load_pack(Path::new(pack_path))
+}
+
+/* ══════════ 配置 ══════════ */
+
+pub fn get_config(config_path: &Path) -> Value {
+    json!({
+        "config": config::load(config_path),
+        "presets": config::presets(),
+        "path": config_path.display().to_string(),
+        "domain": config::default_domain_path().display().to_string(),
+    })
+}
+
+pub fn set_config(config_path: &Path, config_value: Value) -> Result<Value, String> {
+    let cfg: config::AppConfig =
+        serde_json::from_value(config_value).map_err(|e| format!("配置格式错误: {e}"))?;
+    // 简单校验：至少要有 base_url / api_key / model
+    if let Some(p) = cfg.providers.get(cfg.active) {
+        if p.base_url.trim().is_empty() || p.api_key.trim().is_empty() || p.model.trim().is_empty() {
+            return Err("模型配置不完整：需要 baseURL / API Key / 模型名".to_string());
+        }
+    } else {
+        return Err("没有可用的模型提供方".to_string());
+    }
+    config::save(config_path, &cfg)?;
+    Ok(json!({ "saved": true, "path": config_path.display().to_string() }))
+}
+
+/* ══════════ 提示词 / 模型 ══════════ */
+
+pub fn build_prompt(task: &str, pack_path: &str, payload: &Value) -> Result<Value, String> {
+    crate::prompt::build(task, Path::new(pack_path), payload)
+}
+
+/// 装配提示词（自动注入 user.md 学习者状态）→ 请求 → 校验 → 最多 2 次重试
+pub fn ask_model(config_path: &Path, req: &Value) -> Result<Value, String> {
+    let task = req.get("task").and_then(|v| v.as_str()).unwrap_or("explain");
+    let pack = req.get("packPath").and_then(|v| v.as_str()).unwrap_or("");
+    let domain = resolve_domain(req.get("domain").and_then(|v| v.as_str()).unwrap_or(""));
+    let packs_dir = resolve_packs(req.get("packsDir").and_then(|v| v.as_str()).unwrap_or(""));
+    let mut payload = req.get("payload").cloned().unwrap_or(Value::Null);
+
+    if !Path::new(pack).is_dir() {
+        return Err(format!("学科包目录不存在：{pack}"));
+    }
+    // 学习者状态注入（user.md）：模型据此做个性化，落实「重点复习我不会的」
+    if payload.get("_learner_md").is_none() {
+        if let Ok((content, _)) = learn::write_user_md(&domain, &packs_dir) {
+            if let Some(obj) = payload.as_object_mut() {
+                obj.insert("_learner_md".to_string(), Value::String(content));
+            }
+        }
+    }
+    let cfg = config::load(config_path);
+    let r = llm::ask_retry(&cfg, task, Path::new(pack), &payload, 2)?;
+    Ok(r.to_json())
+}
+
+/* ══════════ 学习环路 ══════════ */
+
+/// user.md 全文（人读 + 机读同一份）
+pub fn learn_state(domain: &str, packs_dir: &str) -> Result<Value, String> {
+    let d = resolve_domain(domain);
+    let p = resolve_packs(packs_dir);
+    let (content, path) = learn::write_user_md(&d, &p)?;
+    Ok(json!({
+        "userMd": content,
+        "path": path.display().to_string(),
+        "domain": d.display().to_string(),
+    }))
+}
+
+/// 复习态势：薄弱 + 今日到期 + 今日进度
+pub fn learn_due(domain: &str, packs_dir: &str) -> Result<Value, String> {
+    let d = resolve_domain(domain);
+    let p = resolve_packs(packs_dir);
+    let st = learn::derive(&d, None);
+    Ok(json!({
+        "weak": decorate(&p, &learn::weak_list(&st)),
+        "due": decorate(&p, &learn::due_list(&st, None)),
+        "today_answers": st.today_answers,
+        "today_wrong": st.today_wrong,
+        "nodes": st.nodes,
+        "events_total": st.events_total,
+        "domain": d.display().to_string(),
+    }))
+}
+
+/// 出题（错题优先 → 未做过 → 最久未做）
+pub fn learn_queue(domain: &str, packs_dir: &str, kc_id: &str, n: Option<usize>) -> Result<Value, String> {
+    let d = resolve_domain(domain);
+    let p = resolve_packs(packs_dir);
+    let st = learn::derive(&d, None);
+    let items = learn::pick_items(&p, kc_id, &st, n.unwrap_or(3));
+    Ok(json!({ "items": items }))
+}
+
+/// 记一次作答 = 写一条账本事件，并返回该知识点更新后的状态
+pub fn record_answer(
+    domain: &str,
+    packs_dir: &str,
+    pack: &str,
+    item_id: &str,
+    answered: &str,
+    source: Option<&str>,
+) -> Result<Value, String> {
+    let d = resolve_domain(domain);
+    let p = resolve_packs(packs_dir);
+    let node = learn::node_id(&d)?;
+    let out = learn::record_answer(&d, &p, &node, pack, item_id, answered, source.unwrap_or("quiz"), None)?;
+    // 账本变了，派生文件随之刷新
+    let _ = learn::write_user_md(&d, &p);
+    Ok(json!({
+        "ok": out.ok,
+        "correct": out.event.correct,
+        "kc": out.kc_state,
+        "nextDue": out.next_due,
+        "eventId": out.event.id,
+    }))
+}
+
+pub fn learn_sync(domain: &str, packs_dir: &str) -> Result<Value, String> {
+    let d = resolve_domain(domain);
+    let p = resolve_packs(packs_dir);
+    learn::sync(&d, &p)
+}
+
+pub fn learn_delegate(domain: &str, packs_dir: &str) -> Result<Value, String> {
+    let d = resolve_domain(domain);
+    let p = resolve_packs(packs_dir);
+    let node = learn::node_id(&d)?;
+    learn::export_wrong_delegation(&d, &p, &node, &learn::today())
+}
+
+pub fn learn_review(config_path: &Path, domain: &str, packs_dir: &str, limit: Option<usize>) -> Result<Value, String> {
+    let d = resolve_domain(domain);
+    let p = resolve_packs(packs_dir);
+    let cfg = config::load(config_path);
+    let node = learn::node_id(&d)?;
+    let pending = learn::pending_delegations(&d, &node);
+    let mut processed = Vec::new();
+    for f in pending.iter().take(limit.unwrap_or(3)) {
+        let md = std::fs::read_to_string(f).unwrap_or_default();
+        let Some(payload) = learn::extract_machine_json(&md) else { continue };
+        let res = llm::ask_retry(&cfg, "review-wrong", &p, &payload, 1)?;
+        if let Some(data) = &res.data {
+            let out = learn::write_delegation_result(&d, &node, f, data)?;
+            processed.push(json!({
+                "src": f.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+                "result": out.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+                "ok": res.ok,
+                "attempts": res.attempts,
+            }));
+        }
+    }
+    let _ = learn::sync(&d, &p);
+    Ok(json!({ "processed": processed, "pending_before": pending.len() }))
+}
+
+pub fn learn_plan(domain: &str, action: &str, text: Option<&str>, task_id: Option<&str>) -> Result<Value, String> {
+    let d = resolve_domain(domain);
+    let node = learn::node_id(&d)?;
+    match action {
+        "add" => Ok(json!({ "added": learn::plan_add(&d, &node, text.unwrap_or(""))? })),
+        "done" => {
+            learn::plan_done(&d, &node, task_id.unwrap_or(""))?;
+            Ok(json!({ "done": task_id }))
+        }
+        _ => Ok(json!({ "plan": learn::plan_list(&d) })),
+    }
+}

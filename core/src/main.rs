@@ -109,6 +109,9 @@ fn main() -> ExitCode {
 
         "prompt" | "ask" => cmd_ask(cmd, &args, json_out),
 
+        // 对外 API 契约的单一入口（GUI / CLI / 无头预览桥共用 core::api）
+        "api" => cmd_api(&args),
+
         "learn-sync" => {
             let domain = domain_of(&args);
             let packs = match packs_of(&args) {
@@ -504,6 +507,67 @@ fn main() -> ExitCode {
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
+        }
+    }
+}
+
+/// 对外 API 契约入口：`wordo api <name> --json '<args对象>'`，输出 {"ok":bool,"data"|"error"}
+fn cmd_api(args: &[String]) -> ExitCode {
+    let Some(name) = args.get(2) else {
+        eprintln!("用法: wordo api <name> --json '{{...}}'");
+        return ExitCode::from(2);
+    };
+    let a: Value = arg(args, "--json")
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .unwrap_or_else(|| json!({}));
+    let cfg = wordo_core::config::default_path();
+
+    use wordo_core::api;
+    let s = |k: &str| a.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let os = |k: &str| a.get(k).and_then(|v| v.as_str()).map(|x| x.to_string());
+    let un = |k: &str| a.get(k).and_then(|v| v.as_u64()).map(|x| x as usize);
+
+    let r: Result<Value, String> = match name.as_str() {
+        "list_packs" => Ok(api::list_packs(&s("packsDir"))),
+        "load_pack" => api::load_pack(&s("packPath")),
+        "get_config" => Ok(api::get_config(&cfg)),
+        "set_config" => api::set_config(&cfg, a.get("config").cloned().unwrap_or_else(|| json!({}))),
+        "build_prompt" => {
+            let payload = a.get("payload").cloned().unwrap_or_else(|| json!({}));
+            api::build_prompt(&s("task"), &s("packPath"), &payload)
+        }
+        "ask_model" => api::ask_model(&cfg, &a),
+        "learn_state" => api::learn_state(&s("domain"), &s("packsDir")),
+        "learn_due" => api::learn_due(&s("domain"), &s("packsDir")),
+        "learn_queue" => api::learn_queue(&s("domain"), &s("packsDir"), &s("kcId"), un("n")),
+        "record_answer" => api::record_answer(
+            &s("domain"),
+            &s("packsDir"),
+            &s("pack"),
+            &s("itemId"),
+            &s("answered"),
+            os("source").as_deref(),
+        ),
+        "learn_sync" => api::learn_sync(&s("domain"), &s("packsDir")),
+        "learn_delegate" => api::learn_delegate(&s("domain"), &s("packsDir")),
+        "learn_review" => api::learn_review(&cfg, &s("domain"), &s("packsDir"), un("limit")),
+        "learn_plan" => api::learn_plan(
+            &s("domain"),
+            &s("action"),
+            os("text").as_deref(),
+            os("taskId").as_deref(),
+        ),
+        other => Err(format!("未知 api: {other}")),
+    };
+
+    match r {
+        Ok(v) => {
+            println!("{}", serde_json::to_string(&json!({"ok": true, "data": v})).unwrap_or_default());
+            ExitCode::from(0)
+        }
+        Err(e) => {
+            println!("{}", serde_json::to_string(&json!({"ok": false, "error": e})).unwrap_or_default());
+            ExitCode::from(1)
         }
     }
 }

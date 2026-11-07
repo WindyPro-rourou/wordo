@@ -54,7 +54,7 @@ pub fn chat(prov: &ProviderCfg, temperature: f64, system: &str, user: &str) -> R
             { "role": "user", "content": user }
         ],
         "temperature": temperature,
-        "max_tokens": 2048,
+        "max_tokens": 6000,
         "stream": false
     });
 

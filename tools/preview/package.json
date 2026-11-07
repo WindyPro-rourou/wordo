@@ -1,0 +1,10 @@
+{
+  "name": "wordo-preview",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "WORDO 无头预览与自迭代工具（开发用，不随应用发布）",
+  "dependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}

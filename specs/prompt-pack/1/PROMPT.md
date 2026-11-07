@@ -36,11 +36,44 @@
 
 ## ③ 输出 schema
 
-**只输出 JSON，顶层必须含 `"task"` 字段**，且整体符合 `output-schema/1` 对应任务的定义：
-- T1 → `classify-error.schema.json`
-- T2 → `explain.schema.json`
-
+**只输出 JSON，顶层必须含 `"task"` 字段**，且整体符合 `output-schema/1` 对应任务的定义。
 固定字段（所有任务都有）：`task`、`schema_ver`（"1"）、`warnings`（数组，无则空）。
+
+> ⚠️ **字段名必须与下面完全一致，不得改名、不得嵌套到其他对象里、不得增减必需字段。**
+
+### T1 → classify-error（逐字段照抄，不要嵌套）
+```json
+{
+  "task": "classify-error", "schema_ver": "1", "warnings": [],
+  "item_id": "it_xxx", "answered": "C", "correct": "A",
+  "error_type": "concept_confused",
+  "secondary_factor": null,
+  "root_cause_kc_id": "kc_xxx",
+  "confidence": 0.8,
+  "suggested_action": "review_prereq",
+  "notes": "一句人话",
+  "inferred": false
+}
+```
+枚举：`error_type` ∈ none|knowledge_missing|concept_confused|method_missing|calculation_slip|misread；
+`suggested_action` ∈ review_prereq|re_explain|drill_similar|split_concept|retry_later|none。
+
+### T2 → explain（逐字段照抄，**禁止**把内容塞进 `kc` 之类的新对象）
+```json
+{
+  "task": "explain", "schema_ver": "1", "warnings": [],
+  "kc_id": "kc_xxx",
+  "prereq_gap": null,
+  "explanation_md": "## 直观理解\n……\n\n## 规范表述\n……",
+  "worked_example": "题干：……\n解：……",
+  "misconceptions": ["……", "……"],
+  "followup_question": { "stem": "……", "options": ["A…", "B…", "C…", "D…"], "answer": "B" },
+  "tool_hints": ["timeline"],
+  "inferred": false
+}
+```
+`tool_hints` ∈ canvas-geometry|graph-plot|physics-sim|timeline|mindmap|answer-board|none。
+`explanation_md` 请控制在 600 字以内，`worked_example` 300 字以内（防止输出被截断）。
 
 ## ④ 端侧规矩
 

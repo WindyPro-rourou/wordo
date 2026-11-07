@@ -33,10 +33,13 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;          /* 窄屏换行，避免控件被挤出视口 */
+  gap: 10px 16px;
   padding: 16px 24px;
   border-bottom: 1px solid var(--line);
   background: var(--panel);
 }
+header > div:first-child { flex: 0 0 auto; }
 .brand { font-family: var(--serif); font-size: 24px; letter-spacing: -0.02em; line-height: 1; }
 .brand-sub {
   font-family: var(--mono);
@@ -46,14 +49,16 @@ header {
   color: var(--ink-2);
   margin-left: 12px;
 }
-.packs-dir { display: flex; align-items: center; gap: 10px; }
-.packs-dir label { font-size: 12px; color: var(--ink-2); }
+.packs-dir { display: flex; align-items: center; gap: 10px; flex: 1 1 320px; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+.packs-dir label { font-size: 12px; color: var(--ink-2); flex: 0 0 auto; }
 .packs-dir input {
-  width: 360px; padding: 7px 10px;
+  flex: 1 1 180px; min-width: 0; width: auto;
+  padding: 7px 10px;
   border: 1px solid var(--line); border-radius: 4px;
   background: #fff; color: var(--ink);
-  font-family: var(--mono); font-size: 11px;
+  font-family: var(--mono); font-size: 12px;
 }
+.packs-dir .btn { flex: 0 0 auto; }
 .btn {
   padding: 7px 16px;
   background: #111111; color: #ffffff;
@@ -410,3 +415,132 @@ aside h2 {
 .me-ans-no { background: var(--p-red-bg); color: var(--p-red-tx); }
 .me-ans-err { background: var(--p-red-bg); color: var(--p-red-tx); }
 .me-ans-pending { background: var(--panel); color: var(--ink-2); }
+
+/* ══════════ 第四轮修正：可读性 / 语义样式 / 响应式 ══════════ */
+
+/* 1) issue 级别样式（Rust/后端用 error|warning|info，原 CSS 只写了 err|warn|info → 警告无样式） */
+.issue.error { background: var(--p-red-bg); color: var(--p-red-tx); }
+.issue.warning { background: var(--p-yellow-bg); color: var(--p-yellow-tx); }
+.issue.info { background: var(--panel); color: var(--ink-2); }
+.issue { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.issue-lv {
+  flex: 0 0 auto; font-family: var(--mono); font-size: 11px; font-weight: 600;
+  padding: 1px 6px; border-radius: 3px; background: rgba(0,0,0,0.06);
+}
+.issue-file { font-family: var(--mono); font-size: 11px; opacity: 0.75; }
+.issue-msg { flex: 1 1 240px; }
+.issue-list { display: flex; flex-direction: column; gap: 8px; }
+
+/* 2) 中文最小字号底线（10px 中文会糊） */
+.brand-sub { font-size: 11px; }
+aside h2 { font-size: 13px; letter-spacing: 0.04em; text-transform: none; }
+.stat .l, .me-stat .l { font-size: 12px; letter-spacing: 0.04em; text-transform: none; }
+.block-label { font-size: 11px; }
+.pack-sub, .kc-tag, .item-type, .me-kc-sub, .me-path { font-size: 12px; }
+.me-kv span, .me-kv b { font-size: 13px; }
+
+/* 3) 长串不撑破布局（路径 / 代码 / 英文单词） */
+code, .me-path, .me-kv b, .issue-file { overflow-wrap: anywhere; word-break: break-word; }
+.lesson-block code { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* 4) 顶栏输入框不要吃掉整行 */
+.packs-dir input { max-width: 460px; }
+
+/* 5) 响应式：≤960px 单列（平板竖屏 / 手机 / iPad 分屏） */
+@media (max-width: 960px) {
+  header { padding: 12px 16px; }
+  .packs-dir { justify-content: flex-start; flex: 1 1 100%; }
+  .packs-dir input { max-width: none; }
+  main { flex-direction: column; }
+  aside { width: auto; border-right: none; border-bottom: 1px solid var(--line); padding: 10px 16px; }
+  aside h2 { display: none; }
+  #pack-list { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+  #pack-list .pack-btn { flex: 0 0 auto; min-width: 200px; margin-bottom: 0; }
+  #tabs { padding: 10px 16px 0; gap: 18px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+  #tabs::-webkit-scrollbar { display: none; }
+  .tab { white-space: nowrap; flex: 0 0 auto; }
+  #view { padding: 18px 16px; }
+  .me-stats, .report-stats { grid-template-columns: repeat(2, 1fr); }
+  .lesson-block { padding: 18px 16px; }
+  .lesson-head h1 { font-size: 26px; }
+  .me-table { font-size: 12px; }
+  .me-table th, .me-table td { padding-right: 10px; }
+}
+
+/* 6) ≤560px 手机：卡片更紧凑、按钮占满 */
+@media (max-width: 560px) {
+  .me-stats, .report-stats { gap: 8px; }
+  .me-stat, .stat { padding: 12px 14px; }
+  .me-stat .n, .stat .n { font-size: 24px; }
+  .actions { gap: 8px; }
+  .actions .btn { flex: 1 1 auto; }
+  .lesson-head h1 { font-size: 23px; }
+  .chips { gap: 6px; }
+  .chip { padding: 7px 10px; font-size: 12px; }
+  .q-opt { padding: 10px 12px; font-size: 13px; }
+  .q-stem { font-size: 14px; }
+}
+
+/* 7) 剩余 10px 小字（徽章 / 表头 / 设置标签）抬到 11px */
+.badge, .chip-n, .kc-dangling, .field label, .settings-note, .me-table th { font-size: 11px; }
+.me-table th { letter-spacing: 0.04em; text-transform: none; }
+
+/* 8) 表格对齐与窄屏不折行（配合 .me-table-wrap 横向滚动） */
+.me-table { min-width: 620px; }
+.me-table th, .me-table td { white-space: nowrap; }
+.me-table th:first-child, .me-table td:first-child { white-space: normal; min-width: 180px; }
+.me-table th:nth-child(2), .me-table td:nth-child(2),
+.me-table th:nth-child(3), .me-table td:nth-child(3),
+.me-table th:nth-child(4), .me-table td:nth-child(4),
+.me-table th:nth-child(5), .me-table td:nth-child(5) { text-align: right; }
+.me-table th:first-child, .me-table td:first-child { text-align: left; }
+.me-table thead th { border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+
+/* 9) 键盘可达性：焦点可见 */
+:focus-visible { outline: 2px solid #111111; outline-offset: 2px; border-radius: 4px; }
+button:focus-visible, .tab:focus-visible, .chip:focus-visible, .q-opt:focus-visible { outline: 2px solid #111111; outline-offset: 2px; }
+
+/* 10) 路径只显示尾部，避免长串破坏排版 */
+.me-path, .me-sub { overflow-wrap: anywhere; }
+
+/* 11) 设置页配置状态条 */
+.cfg-status { margin: 4px 0 20px; padding: 10px 14px; border-radius: 6px; font-size: 13px; }
+.cfg-status.ok { background: var(--p-green-bg); color: var(--p-green-tx); }
+.cfg-status.no { background: var(--p-yellow-bg); color: var(--p-yellow-tx); }
+
+/* 12) 标签不要吃掉模型名的大小写；折叠的预置讲解样式 */
+.block-label { text-transform: none; letter-spacing: 0.06em; }
+.preset-fold { margin-bottom: 16px; }
+.preset-fold > summary { cursor: pointer; padding: 10px 0; list-style: none; }
+.preset-fold > summary::-webkit-details-marker { display: none; }
+.preset-fold > summary > .block-label::after { content: " ＋"; color: var(--ink-2); }
+.preset-fold[open] > summary > .block-label::after { content: " －"; }
+
+/* 13) 学习页掌握度标记 / 骨架屏 / 学习计划 */
+.lesson-flag {
+  display: inline-block; margin-top: 10px; padding: 3px 10px;
+  border-radius: 999px; font-family: var(--mono); font-size: 11px;
+}
+.lesson-flag.warn { background: var(--p-yellow-bg); color: var(--p-yellow-tx); }
+.lesson-flag.ok { background: var(--p-green-bg); color: var(--p-green-tx); }
+
+.skeleton .sk-line {
+  height: 12px; border-radius: 6px; margin: 12px 0;
+  background: linear-gradient(90deg, #f0efec 25%, #f7f6f3 37%, #f0efec 63%);
+  background-size: 400% 100%;
+  animation: sk 1.4s ease-in-out infinite;
+}
+@keyframes sk { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+
+.me-plan-add { display: flex; gap: 8px; margin-bottom: 10px; }
+.me-plan-add input {
+  flex: 1 1 auto; min-width: 0; padding: 8px 12px;
+  border: 1px solid var(--line); border-radius: 6px; background: #fff;
+  font-size: 13px; color: var(--ink);
+}
+.me-plan { list-style: none; margin: 0; padding: 0; }
+.me-plan li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.me-plan li:last-child { border-bottom: none; }
+.me-plan label { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; font-size: 14px; }
+.me-plan input[type="checkbox"] { margin-top: 3px; accent-color: #111111; }
+.me-plan li.done span { color: var(--ink-2); text-decoration: line-through; }

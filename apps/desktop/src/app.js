@@ -42,6 +42,8 @@ function setTab(tab) {
   document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === tab));
   document.getElementById("tabs").classList.toggle("hidden", !state.current && tab !== "settings" && tab !== "me");
   render();
+  const v = document.getElementById("view");
+  if (v) v.scrollTop = 0;
 }
 
 async function loadConfig() {
@@ -109,6 +111,12 @@ async function openPack(path) {
   state.learn = { kcId: null, ai: null, aiLoading: false, aiError: null, pick: null, classify: null, classifyLoading: false };
   renderPackList();
   setTab("learn");
+  // 顺手拉一次学习状态，让学习页能显示「薄弱 / 掌握度」标记
+  if (!state.me.due) {
+    invoke("learn_due", { domain: getDomain(), packsDir: packsDirValue() })
+      .then((d) => { state.me.due = d || null; if (state.tab === "learn") render(); })
+      .catch(() => {});
+  }
 }
 
 /* ══════════ 主视图分发 ══════════ */
@@ -165,16 +173,19 @@ function renderLearn(view) {
     <div class="lesson-head">
       <h1>${esc(kc.name)}</h1>
       <div class="lesson-meta">${esc(arrOf(kc.toc).join(" › "))}${kc.difficulty != null ? " · 难度 " + kc.difficulty : ""}${kc.bloom ? " · " + esc(kc.bloom) : ""}</div>
+      ${(() => {
+        const due = state.me.due;
+        if (!due) return "";
+        const hit = [...(due.weak || []), ...(due.due || [])].find((x) => x.kc_id === kc.id);
+        if (hit) return `<span class="lesson-flag warn">薄弱 · 掌握度 ${esc(pct(hit.mastery))} · 错 ${esc(String(hit.wrong || 0))} 次</span>`;
+        return `<span class="lesson-flag ok">尚未记录 / 已掌握</span>`;
+      })()}
     </div>`;
 
-  // 预置讲解
-  if (mat) {
-    // 素材自带的一级标题与页头重复，去掉
-    const bodyMd = String(mat.body || "").replace(/^\s*#\s+.*(?:\r?\n|$)/, "");
-    body += `<section class="lesson-block"><div class="block-label">预置讲解</div>${mdToHtml(bodyMd)}</section>`;
-  } else {
-    body += `<section class="lesson-block"><div class="hint">本知识点还没有预置讲解。点下面的按钮让模型现场讲一遍。</div></section>`;
-  }
+  // 预置讲解：先算好内容，等 AI 卡片之后再放（有 AI 讲解时默认折叠，避免两篇长文堆叠）
+  const presetBody = mat
+    ? `<section class="lesson-block"><div class="block-label">预置讲解</div>${mdToHtml(String(mat.body || "").replace(/^\s*#\s+.*(?:\r?\n|$)/, ""))}</section>`
+    : `<section class="lesson-block"><div class="hint">本知识点还没有预置讲解。点下面的「让 AI 讲一遍」让模型现场讲一遍。</div></section>`;
 
   // AI 动作区
   const keyReady = hasKey();
@@ -184,7 +195,18 @@ function renderLearn(view) {
     </div>`;
 
   if (state.learn.aiError) {
-    body += `<div class="issue err">${esc(state.learn.aiError)}</div>`;
+    body += `<div class="issue error">${esc(state.learn.aiError)}</div>`;
+  }
+
+  // 生成中：骨架屏（让用户知道内容将出现在哪里）
+  if (state.learn.aiLoading && !(ai && ai.data)) {
+    body += `<section class="lesson-block ai-card skeleton">
+      <div class="block-label">AI 讲解 · 正在生成…（约 10–20 秒）</div>
+      <div class="sk-line" style="width:92%"></div>
+      <div class="sk-line" style="width:78%"></div>
+      <div class="sk-line" style="width:86%"></div>
+      <div class="sk-line" style="width:64%"></div>
+    </section>`;
   }
 
   // AI 讲解结果
@@ -235,6 +257,13 @@ function renderLearn(view) {
           : ""
       }
     </section>`;
+  }
+
+  // 预置讲解放在 AI 卡片之后；本轮已有 AI 讲解时折叠（原始素材按需查看）
+  if (ai && ai.data) {
+    body += `<details class="preset-fold"><summary><span class="block-label">预置讲解（原始素材 · 点开查看）</span></summary>${presetBody}</details>`;
+  } else {
+    body += presetBody;
   }
 
   // 练习题（点击即判）
@@ -400,6 +429,9 @@ async function runExplain() {
   }
   state.learn.aiLoading = false;
   render();
+  // 生成完成后滚到 AI 卡片
+  const card = document.querySelector(".lesson-block.ai-card");
+  if (card) card.scrollIntoView({ block: "start", behavior: "smooth" });
 }
 
 async function runClassify() {
@@ -508,13 +540,15 @@ async function loadMe() {
   state.me.loading = true;
   state.me.error = null;
   try {
-    const [st, due] = await Promise.all([
+    const [st, due, plan] = await Promise.all([
       invoke("learn_state", { domain, packsDir }),
       invoke("learn_due", { domain, packsDir }),
+      invoke("learn_plan", { domain, action: "list" }),
     ]);
     if (seq !== state.me.seq) return;
     state.me.state = st || null;
     state.me.due = due || null;
+    state.me.plan = (plan && plan.plan) || [];
   } catch (e) {
     if (seq !== state.me.seq) return;
     state.me.error = "读取学习账本失败：" + readableErr(e);
@@ -534,22 +568,23 @@ function paintMe(view) {
   const due = (d && d.due) || [];
   const domain = getDomain();
   const busy = state.me.busy;
+  const firstLoad = state.me.loading && !st;
 
   let html = `<div class="me">
     <div class="me-head">
       <h1>我的</h1>
-      <div class="me-sub mono muted">${domain ? "域：" + esc(domain) : "默认账号域"}${st && st.domain ? " · " + esc(st.domain) : ""}</div>
-      ${st && st.path ? `<div class="me-path mono muted">user.md：${esc(st.path)}</div>` : ""}
+      <div class="me-sub mono muted">${domain ? "域：" + esc(tail(domain)) : "默认账号域"}${st && st.domain ? " · " + esc(tail(st.domain)) : ""}</div>
+      ${st && st.path ? `<div class="me-path mono muted" title="${esc(st.path)}">user.md：${esc(tail(st.path))}</div>` : ""}
     </div>`;
 
   if (state.me.error) html += `<div class="me-err">${esc(state.me.error)}</div>`;
   if (state.me.msg) html += `<div class="me-msg">${esc(state.me.msg)}</div>`;
 
   html += `<div class="me-stats">${[
-    ["今日作答", d ? d.today_answers : "—"],
-    ["今日错题", d ? d.today_wrong : "—"],
-    ["薄弱知识点", d ? weak.length : "—"],
-    ["今日待复习", d ? due.length : "—"],
+    ["今日作答", d ? d.today_answers : firstLoad ? "…" : "—"],
+    ["今日错题", d ? d.today_wrong : firstLoad ? "…" : "—"],
+    ["薄弱知识点", d ? weak.length : firstLoad ? "…" : "—"],
+    ["今日待复习", d ? due.length : firstLoad ? "…" : "—"],
   ]
     .map(([l, n], i) => `<div class="me-stat reveal" style="--i:${i}"><div class="n">${esc(String(n))}</div><div class="l">${esc(l)}</div></div>`)
     .join("")}</div>`;
@@ -558,7 +593,12 @@ function paintMe(view) {
     <button class="btn" id="me-sync" ${busy ? "disabled" : ""}>${busy === "sync" ? "同步中…" : "同步域"}</button>
     <button class="btn btn-ghost" id="me-delegate" ${busy ? "disabled" : ""}>${busy === "delegate" ? "导出中…" : "导出今日错题"}</button>
     <button class="btn btn-ghost" id="me-review" ${busy ? "disabled" : ""}>${busy === "review" ? "处理中…（调用模型，较慢）" : "处理域内委托"}</button>
-    <span class="mono muted">${state.me.loading ? "读取中…" : d ? "事件 " + esc(String(d.events_total ?? 0)) + " 条 · 节点 " + esc(String(arrOf(d.nodes).length)) + " 个" : ""}</span>
+    <span class="mono muted">${state.me.loading ? "读取中…" : (() => {
+      const sy = state.me.sync;
+      const ev = sy ? sy.events_total : d ? d.events_total : null;
+      const nd = sy ? Object.keys(sy.per_node || {}).length : d ? arrOf(d.nodes).length : null;
+      return ev != null ? "事件 " + ev + " 条 · 节点 " + (nd ?? 0) + " 个" : "";
+    })()}</span>
   </div>`;
 
   const sy = state.me.sync;
@@ -600,19 +640,40 @@ function paintMe(view) {
 
   html += `<section class="me-block">
     <div class="block-label">薄弱知识点（${weak.length}）</div>
-    ${weak.length ? meTable(weak, false) : `<div class="hint">还没有薄弱项 —— 先去学习页做几道题，答错的会自动进这张表。</div>`}
+    ${weak.length ? meTable(weak, false) : `<div class="hint">${firstLoad ? "正在读取学习账本…" : "还没有薄弱项 —— 先去学习页做几道题，答错的会自动进这张表。"}</div>`}
   </section>`;
 
   html += `<section class="me-block">
     <div class="block-label">今日复习队列（${due.length}）</div>
-    ${due.length ? meTable(due, true) : `<div class="hint">今日没有到期的复习。</div>`}
+    ${due.length ? meTable(due, true) : `<div class="hint">${firstLoad ? "正在读取学习账本…" : "今日没有到期的复习。"}</div>`}
+  </section>`;
+
+  // 学习计划：append-only 任务清单，可在任一设备添加，账号域内共享
+  const plan = state.me.plan || [];
+  const todo = plan.filter((t) => !t.done).length;
+  html += `<section class="me-block">
+    <div class="block-label">学习计划（${todo} 项待办${plan.length ? " / 共 " + plan.length + " 项" : ""}）</div>
+    <div class="me-plan-add">
+      <input id="me-plan-input" type="text" placeholder="加一条学习任务，例如：今晚复习一般过去时" spellcheck="false" />
+      <button class="btn" id="me-plan-add">添加</button>
+    </div>
+    ${
+      plan.length
+        ? `<ul class="me-plan">${plan
+            .map(
+              (t) =>
+                `<li class="${t.done ? "done" : ""}"><label><input type="checkbox" data-plan="${esc(t.id)}" ${t.done ? "checked" : ""}/> <span>${esc(t.text)}</span></label></li>`
+            )
+            .join("")}</ul>`
+        : `<div class="hint">${firstLoad ? "正在读取…" : "还没有任务。加一条，它会落在账号域里、所有设备可见。"}</div>`
+    }
   </section>`;
 
   const md = st && st.userMd ? stripFrontMatter(st.userMd) : "";
   html += `<section class="me-block">
     <details class="me-md" open>
-      <summary><span class="block-label">user.md 全文</span><span class="mono muted">${md ? esc(String(String(st.userMd).length)) + " 字符" : "尚未生成"}</span></summary>
-      <div class="me-md-body">${md ? mdToHtml(md) : `<div class="hint">还没有学员档案。做几道题后会自动生成。</div>`}</div>
+      <summary><span class="block-label">user.md 全文</span><span class="mono muted">${md ? esc(String(String(st.userMd).length)) + " 字符" : firstLoad ? "读取中…" : "尚未生成"}</span></summary>
+      <div class="me-md-body">${md ? mdToHtml(md) : `<div class="hint">${firstLoad ? "正在读取学习账本…" : "还没有学员档案。做几道题后会自动生成。"}</div>`}</div>
     </details>
   </section>`;
 
@@ -627,7 +688,42 @@ function paintMe(view) {
   view.querySelectorAll(".me-go").forEach((b) => {
     b.onclick = () => startReview(b.dataset.pack, b.dataset.kc);
   });
+  const bPlanAdd = view.querySelector("#me-plan-add");
+  if (bPlanAdd) bPlanAdd.onclick = runPlanAdd;
+  const planInput = view.querySelector("#me-plan-input");
+  if (planInput) planInput.onkeydown = (e) => { if (e.key === "Enter") runPlanAdd(); };
+  view.querySelectorAll("input[data-plan]").forEach((cb) => {
+    cb.onchange = () => runPlanDone(cb.dataset.plan, cb.checked);
+  });
   observeReveals(view);
+}
+
+/** 添加学习任务（写入账号域 plan.md + 账本） */
+async function runPlanAdd() {
+  const input = document.getElementById("me-plan-input");
+  const text = (input && input.value || "").trim();
+  if (!text) return;
+  try {
+    await invoke("learn_plan", { domain: getDomain(), action: "add", text });
+    input.value = "";
+    await loadMe();
+    refreshMe();
+  } catch (e) {
+    state.me.error = "添加任务失败：" + readableErr(e);
+    refreshMe();
+  }
+}
+
+/** 勾选完成（只追加一条 plan_done 事件，不改写原文件） */
+async function runPlanDone(taskId, done) {
+  try {
+    await invoke("learn_plan", { domain: getDomain(), action: done ? "done" : "list", taskId });
+    await loadMe();
+    refreshMe();
+  } catch (e) {
+    state.me.error = "更新任务失败：" + readableErr(e);
+    refreshMe();
+  }
 }
 
 function meTable(rows, withAction) {
@@ -734,11 +830,17 @@ function renderSettings(view) {
   const activePreset = p.preset || "nvidia";
   const preset = presets.find((x) => x.id === activePreset) || presets[0] || { models: [], baseUrl: "" };
   const models = preset.models || [];
+  const keyOk = !!(p.api_key && String(p.api_key).trim());
+  const masked = keyOk ? "••••" + String(p.api_key).trim().slice(-4) : "";
+  const statusHtml = keyOk
+    ? `<div class="cfg-status ok">已配置 · 模型 <b>${esc(p.model || "")}</b> · Key ${esc(masked)}</div>`
+    : `<div class="cfg-status no">未配置 API Key —— 填入后「让 AI 讲一遍」「处理域内委托」才可用。</div>`;
 
   view.innerHTML = `
     <div class="settings">
       <h1>设置</h1>
       <p class="muted">纯 API 接入（OpenAI 兼容协议）。Key 只存在本机应用配置目录，不在仓库内。</p>
+      ${statusHtml}
 
       <div class="field">
         <label>模型提供方</label>
@@ -833,7 +935,7 @@ function renderItems(view) {
       return `<div class="acc reveal" style="--i:${idx}">
         <div class="acc-head" data-idx="${idx}">
           <span class="item-stem">${idx + 1}. ${esc(it.stem)}</span>
-          <span style="display:flex;align-items:center;gap:12px"><span class="item-type">${esc(it.type)}</span><span class="toggle">+</span></span>
+          <span style="display:flex;align-items:center;gap:12px"><span class="item-type">${esc(typeLabel(it.type))}</span><span class="toggle">+</span></span>
         </div>
         <div class="acc-body hidden">
           <div style="margin-bottom:10px">${tags}</div>
@@ -897,9 +999,14 @@ function renderReport(view) {
     .map(([l, n], i) => `<div class="stat reveal" style="--i:${i}"><div class="n">${n}</div><div class="l">${l}</div></div>`)
     .join("")}</div>`;
   const issues = (r.issues || [])
-    .map((i, idx) => `<div class="issue ${i.level} reveal" style="--i:${idx}"><code>[${esc(i.code)}]</code> ${esc(i.file)} — ${esc(i.msg)}</div>`)
+    .map(
+      (i, idx) =>
+        `<div class="issue ${i.level} reveal" style="--i:${idx}"><span class="issue-lv">${
+          i.level === "error" ? "错误" : i.level === "warning" ? "警告" : "提示"
+        }</span><code>${esc(i.code)}</code><span class="issue-file">${esc(i.file)}</span><span class="issue-msg">${esc(humanizeKcIds(i.msg))}</span></div>`
+    )
     .join("");
-  view.innerHTML = stats + (issues || `<div class="empty">没有任何问题</div>`);
+  view.innerHTML = stats + (issues ? `<div class="issue-list">${issues}</div>` : `<div class="empty">没有发现问题，学科包校验全部通过。</div>`);
   observeReveals(view);
 }
 
@@ -915,6 +1022,12 @@ function arrOf(v) {
 function kcName(id) {
   const k = (state.current?.kcs || []).find((x) => x.id === id);
   return k ? k.name : id;
+}
+/** 路径只取尾部两段，避免长路径破坏排版 */
+function tail(p) {
+  if (!p) return "";
+  const parts = String(p).split(/[\\/]/).filter(Boolean);
+  return parts.length <= 2 ? String(p) : "…/" + parts.slice(-2).join("/");
 }
 function hasTools(h) {
   const a = arrOf(h).filter((x) => x && x !== "none");
@@ -943,6 +1056,23 @@ function labelAction(a) {
       none: "无需处理",
     }[a] || a || "—"
   );
+}
+/** 机器枚举 → 人话（不要把 single_choice 直接暴露给用户） */
+function typeLabel(t) {
+  return (
+    {
+      single_choice: "单选",
+      multi_choice: "多选",
+      fill_blank: "填空",
+      short_answer: "简答",
+      judge: "判断",
+    }[t] || t || "题目"
+  );
+}
+/** 把 issue 文本里的 kc_id 换成知识点名，人读更友好 */
+function humanizeKcIds(s) {
+  if (!s) return "";
+  return String(s).replace(/\b(kc_[a-z0-9_]+|kc_hs_[a-z0-9_]+|kc_eng_[a-z0-9_]+)\b/gi, (m) => kcName(m));
 }
 
 /* 极简 Markdown 渲染（先转义，再还原结构） */

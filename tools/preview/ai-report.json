@@ -1,0 +1,26 @@
+{
+  "startedAt": "2026-11-07T12:18:52.509Z",
+  "aiRenderMs": 13225,
+  "render": {
+    "hasCard": true,
+    "label": "AI 讲解 · auto/deepseek-v4.1-flash · 尝试 1 次",
+    "h3": [
+      "直观理解",
+      "规范表述",
+      "判据（针对你最近的 concept_confused）",
+      "例题",
+      "常见误解"
+    ],
+    "followupLen": 90,
+    "followup": "检测题 | My father ___ the car last Sunday. | A | A washes | B | B washed | C | C has washed | D | D is washing",
+    "toolHint": "建议教具：timeline",
+    "textLen": 770,
+    "errorText": null
+  },
+  "classify": {
+    "ok": true,
+    "text": "错因分析 · auto/deepseek-v4.1-flash | 类型 | 概念混淆 | 根因知识点 | 一般过去时 | 建议动作 | 拆解概念 | 置信度 | 0.85 | 句中有明确过去时间状语 last Sunday，却仍用一般现在时 washes，是把「一般现在时」与「一般过去时」的时间轴混为一谈（该生一般过去时已连续两次 concept_confused，需对比辨析而非重复讲解）。"
+  },
+  "classifyWaited": true,
+  "consoleErrors": []
+}

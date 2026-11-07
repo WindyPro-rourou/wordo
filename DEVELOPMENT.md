@@ -142,3 +142,55 @@ wordo learn-delegate / learn-review / learn-plan
 - **无冲突不是靠 merge 算法，而是靠结构**：每节点只追加自己的文件，user.md/plan 视图都是派生
 - **素材是稳定的关键输入**：注入 KC 素材后，模型首轮通过校验（注入前需重试 1 次）
 - **ESP32 只需三件事**：取题、写一行 JSON、文件搬运——见 `docs/大纲/04-节点接口与最小节点-v0.1.md`
+
+## M5 · 无头浏览器自迭代（约 11 轮）+ 接入 magpie
+
+**环境变化**：本机没有 Rust 工具链（无 cargo / 无 C:\wordo-build），因此本轮**不重编 Rust**，
+改为建造「Node 同契约后端 + 无头 Edge」的自迭代回路（`tools/preview/`，开发用、不进发布包）。
+
+### 架构收敛（重要）
+- 新增 `core/src/api.rs`：把 14 个命令的**契约实现**从 Tauri 层抽出，GUI / CLI / 预览三者共用一份逻辑
+- `wordo api <name> --json '<args>'`：命令行可直接调同一契约（便于脚本与回归）
+- 预览后端 `tools/preview/backend.mjs` 按同一契约实现，读**真实 packs** 与**同格式账本**，
+  提示词读**同一份 `specs/prompt-pack/1/PROMPT.md`** → 预览测的就是真东西
+
+### 模型接入改为 magpie 网关
+- 用户指令：不用 NVIDIA key，改走 magpie 路由组
+- `http://127.0.0.1:3425/v1` + `MAGPIE_GATEWAY_KEY`，模型 `auto/deepseek-v4.1-flash`
+- 实测对比：同一小请求 NVIDIA 直连 **96.9s** vs magpie 路由 **2.4s** → 差 40 倍
+- `core/src/config.rs` 预设首位新增「本地网关 (magpie)」
+
+### 自迭代发现并修复的真实缺陷（逐条）
+1. 顶栏 `packs/` 输入框固定 360px 不换行 → 窄屏把「刷新/设置」挤出视口（elementFromPoint 为 null）→ 弹性换行布局
+2. 预览服务器把 `/__shim.js` 当静态文件检查 → 404 → `window.__TAURI__` undefined → 整页崩（只剩顶栏）
+3. 前端按 Tauri 签名传 `{req:{…}}`，Node 后端未解包 → ask_model packPath 为空
+4. **提示词只写「见 explain.schema.json」却没内联字段表** → 模型自造 schema（把字段嵌进 `kc`）→ 校验必败；
+   已在 `PROMPT.md §③` 内联 T1/T2 逐字段 JSON 示例（产品同源改进）
+5. `max_tokens: 2048` → 输出被截断成非法 JSON → 提到 6000（后端与 `core/src/llm.rs` 同步）
+6. 预览提示词是「简化版」→ 改为读真 `PROMPT.md`（消除预览与产品漂移）
+7. 素材注入 / 题目索引按「包根目录」与「单包目录」两种入参都会走错 → 修正
+8. `.issue.error/.warning` 无样式（Rust 用 error/warning，CSS 只写了 err/warn）→ 补别名并加级别徽章
+9. 10px 中文（徽章/表头/设置标签）糊 → 全面抬到 11–12px
+10. 手机端两栏固定 300px → 正文被压成一字一行 → ≤960px 单列 + 侧栏横向滚动 + 表头/表格 nowrap+横向滚动
+11. 「我的」页首屏异步取数时显示「还没有档案」（误导）→ 加读取态；「尚未生成」→「读取中…」
+12. 题目类型直接暴露 `single_choice` → 改「单选/多选/填空」
+13. 校验报告裸显示 `kc_eng_0001` → 换成知识点名；issue 改为「级别徽章+代码+文件+信息」四段
+14. AI 讲解渲染在预置讲解之后（要滚很久）→ AI 卡片提到最上，预置讲解自动折叠
+15. 模型名被 CSS 大写（AUTO/DEEPSEEK…）→ `.block-label` 取消 text-transform
+16. 切页签不回到顶部、生成完不定位到卡片 → 已修
+17. `.config.json` 带 UTF-8 BOM → `JSON.parse` 失败（配置读不到）→ 写无 BOM + 读取端 strip BOM
+
+### 新增产品功能
+- 学习页：掌握度/薄弱标记（「薄弱 · 掌握度 62% · 错 2 次」）、AI 生成骨架屏
+- 「我的」页：**学习计划**（增/勾，写账号域 `plan.md` + 账本）、同步结果面板、委托处理回执、user.md 全文
+- 设置页：配置状态条（已配置 · 模型 · Key ••••末尾四位）
+
+### 验证方式（headless，全程不弹窗、不干扰）
+- `shoot.mjs`：4 视口 × 6 页签 = 24 张截图 + 溢出/遮挡/截断/小字/控制台错误断言 → **连续多轮 issues = []**
+- `ai-test.mjs`：点按钮 → 真调 magpie → 12–16s 返回 → 首轮通过校验 → 渲染讲解/检测题/错因分析（含「与历史 concept_confused×2 同源」的个性化）
+- `interact.mjs`：学习计划增/勾、开始复习跳转、同步域、导出今日错题、处理他人委托 → 全绿
+
+### 未验证项（诚实声明）
+- **Rust 侧改动未经编译**（本机无 cargo）：`core/src/{api,config,llm,prompt,outcheck,main,lib}.rs` 与 `apps/desktop/src-tauri/src/lib.rs`。
+  需要在有 Rust 工具链的机器上跑 `cargo build` + `cargo test --lib` 确认。
+- 桌面壳的真实 Tauri 运行时（WebView2）行为未在本轮复测；界面逻辑已用 Chromium 验证。
