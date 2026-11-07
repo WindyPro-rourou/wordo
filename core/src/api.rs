@@ -167,6 +167,8 @@ pub fn record_answer(
     item_id: &str,
     answered: &str,
     source: Option<&str>,
+    error_type: Option<&str>,
+    confidence: Option<&str>,
 ) -> Result<Value, String> {
     let d = resolve_domain(domain);
     let p = resolve_packs(packs_dir);
@@ -289,6 +291,7 @@ pub fn record_judged(
     ok: bool,
     source: &str,
     error_type: Option<&str>,
+    confidence: Option<&str>,
 ) -> Result<Value, String> {
     let d = resolve_domain(domain);
     let p = resolve_packs(packs_dir);
@@ -304,6 +307,7 @@ pub fn record_judged(
         ok,
         source,
         error_type.map(|s| s.to_string()),
+        confidence.map(|s| s.to_string()),
     )
 }
 
@@ -312,4 +316,16 @@ pub fn record_explain(domain: &str, pack: &str, kc_id: &str, model: &str, source
     let d = resolve_domain(domain);
     let node = learn::node_id(&d)?;
     learn::record_explain(&d, &node, pack, kc_id, model, source)
+}
+
+pub fn verify_ledger(domain: &str, packs_dir: &str) -> Result<Value, String> {
+    let d = resolve_domain(domain);
+    let p = resolve_packs(packs_dir);
+    Ok(learn::verify_ledger(&d, &p))
+}
+
+pub fn export_report(domain: &str, packs_dir: &str) -> Result<Value, String> {
+    let d = resolve_domain(domain);
+    let p = resolve_packs(packs_dir);
+    learn::weekly_report(&d, &p)
 }

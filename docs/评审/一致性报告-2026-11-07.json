@@ -1,0 +1,245 @@
+{
+  "summary": {
+    "at": "2026-11-07T13:40:24.115Z",
+    "models": [
+      "auto/deepseek-v4.1-flash",
+      "auto/glm-5.3-flash"
+    ],
+    "format": {
+      "auto/deepseek-v4.1-flash": "5/5",
+      "auto/glm-5.3-flash": "5/5"
+    },
+    "perCase": [
+      {
+        "case": "explain-en-past",
+        "task": "explain",
+        "models": 2,
+        "judgment": null,
+        "fields": 5,
+        "agree": 5,
+        "rate": 100,
+        "structural": 100,
+        "sAgree": 3,
+        "sTotal": 3,
+        "diffs": []
+      },
+      {
+        "case": "explain-math-mono",
+        "task": "explain",
+        "models": 2,
+        "judgment": null,
+        "fields": 5,
+        "agree": 5,
+        "rate": 100,
+        "structural": 100,
+        "sAgree": 3,
+        "sTotal": 3,
+        "diffs": []
+      },
+      {
+        "case": "explain-en-clause",
+        "task": "explain",
+        "models": 2,
+        "judgment": null,
+        "fields": 5,
+        "agree": 5,
+        "rate": 100,
+        "structural": 100,
+        "sAgree": 3,
+        "sTotal": 3,
+        "diffs": []
+      },
+      {
+        "case": "classify-1",
+        "task": "classify-error",
+        "models": 2,
+        "judgment": {
+          "agree": true,
+          "values": [
+            "concept_confused"
+          ]
+        },
+        "fields": 5,
+        "agree": 5,
+        "rate": 100,
+        "structural": 100,
+        "sAgree": 1,
+        "sTotal": 1,
+        "diffs": []
+      },
+      {
+        "case": "review-1",
+        "task": "review-wrong",
+        "models": 2,
+        "judgment": null,
+        "fields": 3,
+        "agree": 3,
+        "rate": 100,
+        "structural": 100,
+        "sAgree": 2,
+        "sTotal": 2,
+        "diffs": []
+      }
+    ],
+    "overallAgreement": 100,
+    "overallStructural": 100
+  },
+  "results": [
+    {
+      "case": "explain-en-past",
+      "task": "explain",
+      "rows": [
+        {
+          "model": "auto/deepseek-v4.1-flash",
+          "ok": true,
+          "ms": 9757,
+          "schemaErrs": [],
+          "obj": {
+            "kc_id": "kc_eng_0002",
+            "answer": "B",
+            "options": 4,
+            "tool_hints": "timeline",
+            "inferred": false
+          }
+        },
+        {
+          "model": "auto/glm-5.3-flash",
+          "ok": true,
+          "ms": 8899,
+          "schemaErrs": [],
+          "obj": {
+            "kc_id": "kc_eng_0002",
+            "answer": "B",
+            "options": 4,
+            "tool_hints": "timeline",
+            "inferred": false
+          }
+        }
+      ]
+    },
+    {
+      "case": "explain-math-mono",
+      "task": "explain",
+      "rows": [
+        {
+          "model": "auto/deepseek-v4.1-flash",
+          "ok": true,
+          "ms": 12549,
+          "schemaErrs": [],
+          "obj": {
+            "kc_id": "kc_hs_math_0003",
+            "answer": "C",
+            "options": 4,
+            "tool_hints": "graph-plot",
+            "inferred": false
+          }
+        },
+        {
+          "model": "auto/glm-5.3-flash",
+          "ok": true,
+          "ms": 12604,
+          "schemaErrs": [],
+          "obj": {
+            "kc_id": "kc_hs_math_0003",
+            "answer": "C",
+            "options": 4,
+            "tool_hints": "graph-plot",
+            "inferred": false
+          }
+        }
+      ]
+    },
+    {
+      "case": "explain-en-clause",
+      "task": "explain",
+      "rows": [
+        {
+          "model": "auto/deepseek-v4.1-flash",
+          "ok": true,
+          "ms": 7860,
+          "schemaErrs": [],
+          "obj": {
+            "kc_id": "kc_eng_0004",
+            "answer": "C",
+            "options": 4,
+            "tool_hints": "mindmap",
+            "inferred": false
+          }
+        },
+        {
+          "model": "auto/glm-5.3-flash",
+          "ok": true,
+          "ms": 9324,
+          "schemaErrs": [],
+          "obj": {
+            "kc_id": "kc_eng_0004",
+            "answer": "C",
+            "options": 4,
+            "tool_hints": "mindmap",
+            "inferred": false
+          }
+        }
+      ]
+    },
+    {
+      "case": "classify-1",
+      "task": "classify-error",
+      "rows": [
+        {
+          "model": "auto/deepseek-v4.1-flash",
+          "ok": true,
+          "ms": 4989,
+          "schemaErrs": [],
+          "obj": {
+            "item_id": "it_eng_0001",
+            "error_type": "concept_confused",
+            "suggested_action": "split_concept",
+            "root_cause_kc_id": "kc_eng_0002",
+            "inferred": false
+          }
+        },
+        {
+          "model": "auto/glm-5.3-flash",
+          "ok": true,
+          "ms": 9304,
+          "schemaErrs": [],
+          "obj": {
+            "item_id": "it_eng_0001",
+            "error_type": "concept_confused",
+            "suggested_action": "split_concept",
+            "root_cause_kc_id": "kc_eng_0002",
+            "inferred": false
+          }
+        }
+      ]
+    },
+    {
+      "case": "review-1",
+      "task": "review-wrong",
+      "rows": [
+        {
+          "model": "auto/deepseek-v4.1-flash",
+          "ok": true,
+          "ms": 7884,
+          "schemaErrs": [],
+          "obj": {
+            "item_ids": "it_eng_0001",
+            "count": 1,
+            "inferred": true
+          }
+        },
+        {
+          "model": "auto/glm-5.3-flash",
+          "ok": true,
+          "ms": 10558,
+          "schemaErrs": [],
+          "obj": {
+            "item_ids": "it_eng_0001",
+            "count": 1,
+            "inferred": true
+          }
+        }
+      ]
+    }
+  ]
+}

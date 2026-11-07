@@ -22,7 +22,7 @@ const nowIso = (d = new Date()) => {
 };
 const todayStr = () => nowIso().slice(0, 10);
 
-export const state = { packsDir: "", domain: "", configPath: "" };
+export const state = { packsDir: "", domain: "", configPath: "", nodeOverride: "" };
 
 /* ══════════ 学科包读取（对应 load.rs） ══════════ */
 
@@ -178,6 +178,7 @@ function domainRoot(domain) { return domain || state.domain; }
 function ledgerDir(d) { return path.join(domainRoot(d), "ledger"); }
 
 export function nodeId(domain) {
+  if (state.nodeOverride) return state.nodeOverride; // 测试用：模拟不同设备
   const d = domainRoot(domain);
   const f = path.join(d, "node.json");
   ensureDir(d);
@@ -204,9 +205,21 @@ export function readEvents(domain) {
   return out;
 }
 
+function nextSeq(file) {
+  let max = 0;
+  if (exists(file)) for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+    const s = line.trim(); if (!s) continue;
+    try { const v = JSON.parse(s); if (v.seq && v.seq > max) max = v.seq; } catch {}
+  }
+  return max + 1;
+}
+
 export function appendEvent(domain, ev) {
   const dir = ledgerDir(domain); ensureDir(dir);
-  fs.appendFileSync(path.join(dir, `${ev.node}.jsonl`), JSON.stringify(ev) + "\n");
+  const file = path.join(dir, `${ev.node}.jsonl`);
+  const out = { ...ev };
+  if (!out.seq) out.seq = nextSeq(file);
+  fs.appendFileSync(file, JSON.stringify(out) + "\n");
 }
 
 function parseTs(s) { const d = new Date(s); return isNaN(d) ? new Date() : d; }
@@ -226,12 +239,22 @@ export function derive(domain, at = new Date()) {
       if (!kcs.has(kc)) kcs.set(kc, { kc_id: kc, attempts: 0, correct: 0, wrong: 0, streak: 0, last_ok: null, last_ts: null, mastery: 0, interval_hours: 0, due_ts: null, mastered: false, error_types: {}, _w: 0, _o: 0, _hist: [] });
       const st = kcs.get(kc);
       st.attempts++;
-      if (ok) { st.correct++; st.streak++; st.interval_hours = st.streak === 1 ? 24 : Math.min(st.interval_hours * 2, MAX_INTERVAL); }
-      else { st.wrong++; st.streak = 0; st.interval_hours = st.interval_hours <= 0 ? MIN_INTERVAL : Math.max(st.interval_hours / 2, MIN_INTERVAL); }
+      const guess = ev.confidence === "guess", unsure = ev.confidence === "unsure", misread = ev.error_type === "misread";
+      if (ok) {
+        st.correct++;
+        if (guess) { st.streak = 0; st.interval_hours = MIN_INTERVAL; }
+        else { st.streak++; const g = unsure ? 1.4 : 2; st.interval_hours = st.streak === 1 ? 24 : Math.min(st.interval_hours * g, MAX_INTERVAL); }
+      } else {
+        st.wrong++; st.streak = 0;
+        st.interval_hours = st.interval_hours <= 0 ? MIN_INTERVAL : Math.max(st.interval_hours / 2, MIN_INTERVAL);
+      }
       st.last_ok = ok; st.last_ts = ev.ts;
       const hours = (at - parseTs(ev.ts)) / 3600000;
       const w = Math.pow(0.5, hours / 72);
-      st._w += w; if (ok) st._o += w;
+      if (!(!ok && misread)) {
+        st._w += w;
+        if (ok) st._o += w * (guess ? 0.15 : unsure ? 0.7 : 1);
+      }
       if (!ok && ev.error_type && ev.error_type !== "none") st.error_types[ev.error_type] = (st.error_types[ev.error_type] || 0) + 1;
     }
     if (ev.item_id) items.set(ev.item_id, ok);
@@ -239,6 +262,7 @@ export function derive(domain, at = new Date()) {
   for (const st of kcs.values()) {
     st.mastery = st._w > 0 ? Math.round((st._o / st._w) * 100) / 100 : 0;
     st.mastered = st.mastery >= MASTERY_OK && st.streak >= STREAK_OK;
+    if (st.mastered && st.interval_hours < 336) st.interval_hours = 336; // 已掌握→低频抽查
     if (st.last_ts) st.due_ts = nowIso(new Date(parseTs(st.last_ts).getTime() + st.interval_hours * 3600000));
     delete st._w; delete st._o; delete st._hist;
   }
@@ -249,7 +273,7 @@ function dueList(st, at = new Date()) {
   return [...st.kcs.values()]
     .filter((k) => k.attempts > 0 && !k.mastered)
     .filter((k) => k.due_ts && parseTs(k.due_ts) <= at)
-    .sort((a, b) => b.wrong - a.wrong || String(a.due_ts).localeCompare(String(b.due_ts)));
+    .sort((a, b) => (b.error_types && b.error_types.concept_confused ? 1 : 0) - (a.error_types && a.error_types.concept_confused ? 1 : 0) || b.wrong - a.wrong || String(a.due_ts).localeCompare(String(b.due_ts)));
 }
 function weakList(st) {
   return [...st.kcs.values()].filter((k) => k.wrong > 0 && !k.mastered)
@@ -433,6 +457,8 @@ export function setConfig(cfg) {
 
 /* ══════════ 模型调用（真实 NVIDIA，OpenAI 兼容） ══════════ */
 
+export function buildPromptFor(task, packPath, payload) { return buildPromptPayload(task, packPath, payload); }
+
 function buildPromptPayload(task, packPath, payload) {
   // 与前缀规范同源：直接读 specs/prompt-pack/1/PROMPT.md（与 Rust 的 include_str! 完全一致）
   const TPL = fs.readFileSync(path.join(REPO_ROOT, "specs/prompt-pack/1/PROMPT.md"), "utf8");
@@ -513,16 +539,51 @@ export async function askModel(req) {
     data = extractJson(raw); issues = data ? check(data) : ["模型输出不是合法 JSON"];
     attempts++;
   }
+  if (data && issues.length === 0) {
+    // 确定性归一化：检测题取题库、建议动作由错因决定（跨模型一致 + 避免模型编错题）
+    if (task === "explain") data = normalizeExplain(packPath, (req.payload && req.payload.kc_id) || data.kc_id, data);
+    if (task === "classify-error") data = normalizeClassify(data);
+  }
   return { ok: !!data && issues.length === 0, data, issues, first_issues: firstIssues, raw, model: prov.model, attempts };
+}
+
+/** 确定性归一化：把「模型自由发挥」的高风险字段改成可复现的值 */
+export function normalizeExplain(packPath, kcId, data) {
+  try {
+    const itemsDir = path.join(packPath, "items");
+    if (!exists(itemsDir)) return data;
+    for (const f of fs.readdirSync(itemsDir).filter((x) => x.endsWith(".json")).sort()) {
+      const it = readJson(path.join(itemsDir, f));
+      if (!(it.kc_ids || []).includes(kcId)) continue;
+      if (!it.options || !it.options.length) continue;
+      const opts = it.options.map((o) => String(o.text ?? o).replace(/^[A-D][.、]\s*/, ""));
+      data.followup_question = { stem: it.stem, options: opts, answer: String(it.answer || "").toUpperCase() };
+      data.warnings = Array.isArray(data.warnings) ? data.warnings : [];
+      data.warnings.push("检测题取自题库（确定性来源），非模型生成");
+      return data;
+    }
+  } catch (e) {}
+  return data;
+}
+
+const ACTION_BY_ERROR = { none: "none", knowledge_missing: "review_prereq", concept_confused: "split_concept", method_missing: "drill_similar", calculation_slip: "retry_later", misread: "re_explain" };
+export function normalizeClassify(data) {
+  const a = ACTION_BY_ERROR[data && data.error_type];
+  if (a) data.suggested_action = a;
+  return data;
 }
 
 function checkOutput(task, v, kcIds) {
   const e = [];
   if (v?.task !== task) e.push(`task 字段应为「${task}」`);
   if (!Array.isArray(v?.warnings)) e.push("缺少 warnings 数组");
+  else if (v.warnings.some((w) => typeof w !== "string")) e.push("warnings 元素必须是字符串");
+  if (v?.schema_ver !== "1") e.push('schema_ver 必须为 "1"');
   if (task === "explain") {
     for (const k of ["kc_id", "explanation_md", "worked_example", "misconceptions", "followup_question", "tool_hints", "inferred"]) if (v[k] === undefined) e.push(`缺少字段 ${k}`);
     if (v.kc_id && kcIds.size && !kcIds.has(v.kc_id)) e.push(`kc_id「${v.kc_id}」不在知识点表中`);
+    if (v.explanation_md && String(v.explanation_md).length > 2000) e.push("explanation_md 超过 2000 字");
+    if (Array.isArray(v.tool_hints) && v.tool_hints.some((h) => !["canvas-geometry","graph-plot","physics-sim","timeline","mindmap","answer-board","none"].includes(h))) e.push("tool_hints 含未知值");
     const q = v.followup_question;
     if (q) {
       if (!q.stem || !String(q.stem).trim()) e.push("followup_question.stem 为空");
@@ -530,6 +591,7 @@ function checkOutput(task, v, kcIds) {
       if (!/^[A-D]$/i.test(String(q.answer || "").trim())) e.push("followup_question.answer 应为 A–D");
     } else e.push("缺少 followup_question");
   } else if (task === "classify-error") {
+    if (v.secondary_factor !== undefined && v.secondary_factor !== null && !["knowledge_missing","concept_confused","method_missing","calculation_slip","misread"].includes(v.secondary_factor)) e.push("secondary_factor 枚举非法");
     for (const k of ["item_id", "answered", "correct", "error_type", "confidence", "suggested_action", "notes", "inferred"]) if (v[k] === undefined) e.push(`缺少字段 ${k}`);
   } else if (task === "review-wrong") {
     if (!Array.isArray(v.reviews) || !v.reviews.length) e.push("reviews 应非空数组");
@@ -674,6 +736,98 @@ export function detectSubject(domain, text, packsDir) {
   return best;
 }
 
+export function verifyLedger(domain, packsDir) {
+  const dir = ledgerDir(domain);
+  const dupIds = [];
+  const seqByNode = {};
+  const all = [];
+  if (exists(dir)) for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".jsonl"))) {
+    const node = f.replace(/\.jsonl$/, "");
+    seqByNode[node] = seqByNode[node] || [];
+    for (const line of fs.readFileSync(path.join(dir, f), "utf8").split(/\r?\n/)) {
+      const s = line.trim(); if (!s) continue;
+      try { const v = JSON.parse(s); all.push(v); if (v.seq) seqByNode[node].push(v.seq); } catch {}
+    }
+  }
+  const seen = new Set();
+  for (const v of all) { if (seen.has(v.id)) dupIds.push(v.id); else seen.add(v.id); }
+  const seqIssues = [];
+  for (const [node, seqs] of Object.entries(seqByNode)) {
+    const uniq = new Set(seqs);
+    const max = seqs.length ? Math.max(...seqs) : 0;
+    let missing = 0;
+    for (let i = 1; i <= max; i++) if (!uniq.has(i)) missing++;
+    const duplicate = seqs.length - uniq.size;
+    if (missing || duplicate) seqIssues.push({ node, max, missing, duplicate });
+  }
+  const known = new Set(kcIndex(packsDir || state.packsDir).keys());
+  const badKc = [...new Set(all.flatMap((e) => e.kc_ids || []).filter((k) => known.size && !known.has(k)))];
+  return { events: all.length, nodes: Object.keys(seqByNode), duplicate_ids: dupIds, seq_issues: seqIssues, unknown_kc_refs: badKc, ok: !dupIds.length && !seqIssues.length && !badKc.length };
+}
+
+/** 计划列表：从账本事件派生（与 Rust 一致） */
+export function planList(domain) {
+  const evs = readEvents(domain);
+  const done = new Set(evs.filter((e) => e.kind === "plan_done").map((e) => e.task_id));
+  const seen = new Set(); const list = [];
+  for (const ev of evs.filter((e) => e.kind === "plan_add")) {
+    if (!ev.task_id || seen.has(ev.task_id)) continue;
+    seen.add(ev.task_id);
+    list.push({ id: ev.task_id, text: ev.note || "", done: done.has(ev.task_id), by: ev.node });
+  }
+  return list;
+}
+
+export function exportReport(domain, packsDir) {
+  const d = ensureDomain(domain);
+  const st = derive(domain);
+  const events = readEvents(domain);
+  const idx = kcIndex(packsDir || state.packsDir);
+  const nm = (id) => (idx.get(id) || { name: id }).name;
+  const from = Date.now() - 7 * 86400000;
+  let answers = 0, correct = 0;
+  const wrongs = [];
+  const kcSet = new Set();
+  for (const e of events) {
+    if ((Date.parse(e.ts) || 0) < from) continue;
+    if (e.kind !== "answer") continue;
+    answers++;
+    if (e.ok) correct++; else wrongs.push(e);
+    (e.kc_ids || []).forEach((k) => kcSet.add(k));
+  }
+  const plan = planList(domain);
+  const planDone = plan.filter((x) => x.done).length;
+  const weak = weakList(st), due = dueList(st);
+  const fmt = (t) => new Date(t).toISOString().slice(0, 10);
+  let md = "# WORDO 学习周报 · " + fmt(from) + " ~ " + fmt(Date.now()) + "\n\n";
+  md += "节点 " + st.node + " ｜ 事件 " + events.length + " 条\n\n## 概览\n";
+  md += "- 作答 **" + answers + "** 次，正确 **" + correct + "**（" + (answers ? Math.round((correct / answers) * 100) + "%" : "-") + "）\n";
+  md += "- 涉及知识点 **" + kcSet.size + "** 个；薄弱 **" + weak.length + "**；今日到期 **" + due.length + "**\n";
+  md += "- 计划完成 **" + planDone + "/" + plan.length + "**\n\n## 薄弱与到期\n";
+  if (!weak.length) md += "- （无）\n";
+  else {
+    md += "| 知识点 | 掌握度 | 对 / 错 | 到期 |\n|---|---|---|---|\n";
+    for (const k of weak.slice(0, 10)) md += "| " + nm(k.kc_id) + " | " + Math.round(k.mastery * 100) / 100 + " | " + k.correct + "/" + k.wrong + " | " + (k.due_ts || "-") + " |\n";
+  }
+  md += "\n## 本周错题\n";
+  if (!wrongs.length) md += "- （无）\n";
+  else for (const e of wrongs.reverse().slice(0, 20)) md += "- " + String(e.ts).slice(0, 16) + " " + e.item_id + " 我选 " + (e.answered || "?") + " / 正确 " + e.correct + "（" + (e.kc_ids || []).map(nm).join("、") + "）\n";
+  md += "\n## 学习计划\n";
+  if (!plan.length) md += "- （无）\n";
+  else for (const x of plan) md += "- [" + (x.done ? "x" : " ") + "] " + x.text + "\n";
+  md += "\n## 建议下一步\n";
+  const sug = [];
+  for (const k of weak.slice(0, 2)) sug.push("先补齐「" + nm(k.kc_id) + "」（掌握度 " + Math.round(k.mastery * 100) + "%）");
+  for (const k of due.slice(0, 2)) sug.push("今日到期：「" + nm(k.kc_id) + "」");
+  if (!sug.length) sug.push("保持节奏：说「混合练 3 个薄弱点」做一次交错练习");
+  for (const s of sug) md += "- " + s + "\n";
+  const dir = path.join(d, "reports");
+  ensureDir(dir);
+  const file = path.join(dir, "周报-" + new Date().toISOString().slice(0, 10) + ".md");
+  fs.writeFileSync(file, md, "utf8");
+  return { path: file, markdown: md };
+}
+
 export async function invoke(name, args = {}) {
   const packsDir = args.packsDir || state.packsDir;
   const domain = args.domain || state.domain;
@@ -703,7 +857,7 @@ export async function invoke(name, args = {}) {
       if (!it) throw new Error(`找不到题目 ${args.itemId}`);
       const ok = judge(it, args.answered);
       const node = nodeId(domain);
-      const ev = { id: `${Date.now()}-0-${node}`, ts: nowIso(), node, kind: "answer", pack: args.pack || it.pack || "", item_id: it.id, kc_ids: it.kc_ids || [], answered: args.answered || "", correct: it.answer, ok, source: args.source || "quiz" };
+      const ev = { id: `${Date.now()}-0-${node}`, ts: nowIso(), node, kind: "answer", pack: args.pack || it.pack || "", item_id: it.id, kc_ids: it.kc_ids || [], answered: args.answered || "", correct: it.answer, ok, source: args.source || "quiz", error_type: args.errorType || null, confidence: args.confidence || null };
       appendEvent(domain, ev);
       const st = derive(domain); const kc = st.kcs.get((it.kc_ids || [])[0]);
       try { writeUserMd(domain, packsDir); } catch {}
@@ -744,7 +898,7 @@ export async function invoke(name, args = {}) {
         id: `${Date.now()}-0-${node}`, ts: nowIso(), node, kind: "answer",
         pack: args.pack || "", item_id: args.syntheticId || "", kc_ids: args.kcId ? [args.kcId] : [],
         answered: args.answered || "", correct: args.ok ? "(judged-correct)" : "(judged-wrong)",
-        ok: !!args.ok, source: args.source || "followup", error_type: args.errorType || null,
+        ok: !!args.ok, source: args.source || "followup", error_type: args.errorType || null, confidence: args.confidence || null,
       };
       appendEvent(domain, ev);
       try { writeUserMd(domain, packsDir); } catch {}
@@ -758,6 +912,8 @@ export async function invoke(name, args = {}) {
       appendEvent(domain, ev);
       return { ok: true, eventId: ev.id };
     }
+    case "export_report": return exportReport(domain, packsDir);
+    case "verify_ledger": return verifyLedger(domain, packsDir);
     case "chat_list": return chatList(domain);
     case "chat_get": return chatGet(domain, args.id);
     case "chat_new": return chatNew(domain, args.title);

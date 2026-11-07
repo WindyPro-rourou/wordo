@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="theme-color" content="#f7f6f3" />
   <title>WORDO 学习系统</title>
   <link rel="stylesheet" href="style.css" />
@@ -41,7 +41,7 @@
       </div>
       <div id="chat-list" class="chat-list" aria-label="对话历史"></div>
       <div class="side-foot">
-        <button class="side-link" data-tab="me">我的账本</button>
+        <button class="side-link" data-tab="me">今日</button>
         <button class="side-link" data-tab="settings">设置</button>
       </div>
     </aside>
@@ -49,7 +49,7 @@
     <section id="content">
       <nav id="tabs" class="hidden">
         <button class="tab active" data-tab="chat">对话</button>
-        <button class="tab" data-tab="me">进度</button>
+        <button class="tab" data-tab="me">今日</button>
         <button class="tab" data-tab="settings">设置</button>
       </nav>
       <div id="view"></div>
@@ -64,7 +64,7 @@
     </button>
     <button class="tabbar-btn" data-tab="me">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
-      <span>进度</span>
+      <span>今日</span>
     </button>
     <button class="tabbar-btn" data-tab="settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3.05V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.24.6.82 1 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
@@ -90,7 +90,7 @@
       <button id="drawer-new" class="btn new-chat">＋ 新建对话</button>
       <div id="drawer-list" class="drawer-list"></div>
       <div class="drawer-foot">
-        <button class="side-link" data-tab="me">进度</button>
+        <button class="side-link" data-tab="me">今日</button>
         <button class="side-link" data-tab="settings">设置</button>
       </div>
     </div>

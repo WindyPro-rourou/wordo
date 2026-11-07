@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordo/output-schema/1/classify-error.schema.json",
+  "title": "WORDO T1 classify-error",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["task", "schema_ver", "warnings", "item_id", "answered", "correct", "error_type", "confidence", "suggested_action", "notes", "inferred"],
+  "properties": {
+    "task": { "const": "classify-error" },
+    "schema_ver": { "const": "1" },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "item_id": { "type": "string", "minLength": 1 },
+    "answered": { "type": "string" },
+    "correct": { "type": "string" },
+    "error_type": { "enum": ["none", "knowledge_missing", "concept_confused", "method_missing", "calculation_slip", "misread"] },
+    "secondary_factor": { "type": ["string", "null"], "enum": ["knowledge_missing", "concept_confused", "method_missing", "calculation_slip", "misread", null] },
+    "root_cause_kc_id": { "type": ["string", "null"] },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "suggested_action": { "enum": ["review_prereq", "re_explain", "drill_similar", "split_concept", "retry_later", "none"] },
+    "notes": { "type": "string", "maxLength": 400 },
+    "inferred": { "type": "boolean" }
+  }
+}

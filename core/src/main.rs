@@ -551,6 +551,8 @@ fn cmd_api(args: &[String]) -> ExitCode {
         "learn_sync" => api::learn_sync(&s("domain"), &s("packsDir")),
         "learn_delegate" => api::learn_delegate(&s("domain"), &s("packsDir")),
         "learn_review" => api::learn_review(&cfg, &s("domain"), &s("packsDir"), un("limit")),
+        "export_report" => api::export_report(&s("domain"), &s("packsDir")),
+        "verify_ledger" => api::verify_ledger(&s("domain"), &s("packsDir")),
         "record_judged" => api::record_judged(
             &s("domain"),
             &s("packsDir"),
@@ -561,6 +563,7 @@ fn cmd_api(args: &[String]) -> ExitCode {
             a.get("ok").and_then(|v| v.as_bool()).unwrap_or(false),
             os("source").as_deref().unwrap_or("followup"),
             os("errorType").as_deref(),
+            os("confidence").as_deref(),
         ),
         "record_explain" => api::record_explain(
             &s("domain"),

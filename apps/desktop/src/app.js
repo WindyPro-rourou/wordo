@@ -73,6 +73,18 @@ async function boot() {
       if (a) { e.preventDefault(); a.run(); }
     }
   });
+  // 软键盘避让：把键盘高度写进 CSS 变量（手机端）
+  if (window.visualViewport) {
+    const vv = window.visualViewport;
+    const syncKb = () => {
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      document.documentElement.style.setProperty("--kb", kb + "px");
+      const th = document.querySelector("#chat-thread");
+      if (th && kb > 0) th.scrollTop = th.scrollHeight;
+    };
+    vv.addEventListener("resize", syncKb);
+    vv.addEventListener("scroll", syncKb);
+  }
   await loadConfig();
   await refreshPacks();
   // 对话优先：打开最近一次会话；没有就新建
@@ -172,7 +184,7 @@ function paintSubjectBar() {
           .join("")
       : `<div class="empty">没有学科包</div>`;
     list.querySelectorAll(".sheet-item").forEach((b) => {
-      b.onclick = () => { openPack(b.dataset.path); closeSubjectSheet(); };
+      b.onclick = () => { openPack(b.dataset.path, { stayInChat: state.tab === "chat" }); closeSubjectSheet(); };
     });
   }
 }
@@ -191,7 +203,8 @@ function closeSubjectSheet() {
 }
 
 
-async function openPack(path) {
+async function openPack(path, opts) {
+  const stay = !!(opts && opts.stayInChat);
   try {
     state.current = await invoke("load_pack", { packPath: path });
   } catch (e) {
@@ -199,6 +212,18 @@ async function openPack(path) {
     return;
   }
   state.learn = { kcId: null, ai: null, aiLoading: false, aiError: null, pick: null, classify: null, classifyLoading: false };
+  if (stay && state.currentChatId) {
+    // 对话内手动改学科：追加事件（不改历史），并提示用户
+    const sid = state.current.meta.id;
+    const nm = state.current.meta.name || sid;
+    try {
+      state.chat = await invoke("chat_append", { domain: getDomain(), id: state.currentChatId, msg: { role: "system", kind: "note", text: "手动指定学科：" + nm, pack: sid } });
+    } catch (e) {}
+    renderPackList();
+    await loadChats();
+    setTab("chat");
+    return;
+  }
   renderPackList();
   setTab("learn");
   // 顺手拉一次学习状态，让学习页能显示「薄弱 / 掌握度」标记
@@ -630,6 +655,7 @@ function welcomeChat() {
   if (weakKc) chips.push(`帮我补一下${weakKc.kc_name}`);
   chips.push("讲讲一般过去时");
   chips.push("给我出两道题");
+  chips.push("混合练 3 个薄弱点");
   return `<div class="chat-welcome">
     <div class="console-bar mono"><span class="dot"></span><span>wordo</span><span class="sep">·</span><span>新对话</span>${recap ? `<span class="console-bar-right">${esc(recap)}</span>` : ""}</div>
     <h1 class="console-title">${greetingWord()}，今天想学点什么？<span class="caret">▌</span></h1>
@@ -654,7 +680,7 @@ function renderChat(view) {
     </div>
     <form class="composer" id="composer">
       <textarea id="chat-input" rows="1" placeholder="${isPhone() ? "说点什么…" : "说点什么，例如「讲讲一般过去时」「我该复习什么」…"}"></textarea>
-      <button class="btn" type="submit" ${state.chatBusy ? "disabled" : ""}>发送</button>
+      <button class="btn" id="chat-send" type="submit" ${state.chatBusy ? "disabled" : ""}>发送</button>
     </form>
     <div class="composer-hint mono">Enter 发送 · Shift+Enter 换行</div>
   </div>`;
@@ -665,7 +691,14 @@ function renderChat(view) {
     ta.value = state.chatDraft || "";
     autoGrow(ta);
     ta.focus();
-    ta.oninput = () => { autoGrow(ta); state.chatDraft = ta.value; };
+    ta.oninput = () => {
+      autoGrow(ta);
+      state.chatDraft = ta.value;
+      const sb = document.getElementById("chat-send");
+      if (sb) sb.disabled = !String(ta.value || "").trim();
+    };
+    const sb0 = document.getElementById("chat-send");
+    if (sb0) sb0.disabled = !String(ta.value || "").trim();
     ta.onkeydown = (e) => {
       // 手机端软键盘回车=换行（避免误发），桌面 Enter 发送
       if (e.key === "Enter" && !e.shiftKey && !isPhone()) { e.preventDefault(); if (form) form.requestSubmit(); }
@@ -687,63 +720,73 @@ function autoGrow(el) {
 /** 对话里的选项判分：写账本 + 显示结果；答错提供「让 AI 分析错因」 */
 function bindQuiz(view) {
   view.querySelectorAll(".q-opt[data-quiz-opt]").forEach((btn) => {
-    btn.onclick = async () => {
+    btn.onclick = () => {
       const card = btn.closest(".msg-card");
       if (!card || card.dataset.done === "1") return;
-      const note = card.querySelector(".quiz-note");
-      const isQuizMsg = !!card.dataset.item;
-      const correct = isQuizMsg ? btn.dataset.correct === "1" : String(btn.dataset.quizOpt) === String(btn.dataset.answer || "");
+      card.dataset.done = "1";
+      const isItem = !!card.dataset.item;
+      const correct = isItem ? btn.dataset.correct === "1" : String(btn.dataset.quizOpt) === String(btn.dataset.answer || "");
+      card.querySelectorAll(".q-opt[data-quiz-opt]").forEach((b) => (b.disabled = true));
       btn.classList.add(correct ? "correct" : "wrong");
-      if (!isQuizMsg) {
-        // 讲解里的检测题：也要落账（合成 id），否则掌握度/薄弱/到期永远看不到它
-        card.dataset.done = "1";
-        const packId = (state.chat && state.chat.pack) || "";
-        const kcId = (state.current && state.current.kcs && currentKcIdFromChat()) || "";
-        if (note) note.innerHTML = correct ? `<span class="ok-mark">回答正确</span>` : `<span class="no-mark">不对，正确答案是 ${esc(btn.dataset.answer || "")}</span>`;
+      const note = card.querySelector(".quiz-note");
+      if (!note) return;
+      const confChips = [["certain", "确定"], ["unsure", "说不准"], ["guess", "蒙的"]];
+      const errChips = [["concept_confused", "概念不清"], ["calculation_slip", "算错/笔误"], ["misread", "看错题"]];
+      note.innerHTML =
+        '<div class="chip-row"><span class="chip-label">' + (correct ? "答对了 —— 你是怎么确定的？" : "答错了 —— 先自评一下：") + "</span>" +
+        confChips.map(([v, l]) => '<button class="mini-chip" data-conf="' + v + '">' + l + "</button>").join("") +
+        "</div>" +
+        (correct ? "" : '<div class="chip-row"><span class="chip-label">错因：</span>' + errChips.map(([v, l]) => '<button class="mini-chip" data-err="' + v + '">' + l + "</button>").join("") + "</div>");
+      let conf = null, err = null, sent = false;
+      const submit = async () => {
+        if (!conf || sent) return;
+        sent = true;
+        note.innerHTML = '<span class="mono muted">记账中…</span>';
         try {
-          const res = await invoke("record_judged", {
-            domain: getDomain(),
-            packsDir: packsDirValue(),
-            pack: packId,
-            kcId,
-            syntheticId: `${packId}::${kcId}::followup`,
-            answered: btn.dataset.quizOpt,
-            ok: correct,
-            source: "chat-followup",
-          });
-          const k = (res && res.kc) || null;
-          if (note && k) note.innerHTML += ` <span class="mono muted">· 本知识点 对/错 ${k.correct ?? 0}/${k.wrong ?? 0} · 掌握度 ${pct(k.mastery)}</span>`;
+          const kcId = isItem ? card.dataset.kc : currentKcIdFromChat();
+          const packId = isItem ? card.dataset.pack : (state.chat && state.chat.pack) || "";
+          let res;
+          if (isItem) {
+            res = await invoke("record_answer", { domain: getDomain(), packsDir: packsDirValue(), pack: packId, itemId: card.dataset.item, answered: btn.dataset.quizOpt, source: "chat", errorType: err || undefined, confidence: conf || undefined });
+          } else {
+            res = await invoke("record_judged", {
+              domain: getDomain(), packsDir: packsDirValue(), pack: packId, kcId,
+              syntheticId: packId + "::" + kcId + "::followup",
+              answered: btn.dataset.quizOpt, ok: correct, source: "chat-followup",
+              errorType: err || undefined, confidence: conf,
+            });
+          }
+          const k = (res && res.kc) || {};
+          const guessNote = conf === "guess" && correct ? "（蒙对已按 40% 计入）" : "";
+          note.innerHTML =
+            (correct ? CHECK_SVG : CROSS_SVG) +
+            "<span>" + (correct ? "正确" : "正确答案 " + esc(String((res && res.correct) || btn.dataset.answer || ""))) +
+            " · 对/错 " + (k.correct ?? 0) + "/" + (k.wrong ?? 0) + " · 掌握度 " + pct(k.mastery) + guessNote + "</span>";
+          if (!correct) {
+            const b = document.createElement("button");
+            b.className = "btn btn-ghost";
+            b.textContent = "让 AI 分析错因";
+            b.onclick = () => askWhyWrong(card, btn.dataset.quizOpt);
+            note.appendChild(b);
+          }
           state.me.due = null;
         } catch (e) {
-          if (note) note.innerHTML += ` <span class="no-mark">（记账失败）</span>`;
+          note.textContent = "记账失败：" + readableErr(e);
         }
-        return;
-      }
-      card.dataset.done = "1";
-      card.querySelectorAll(".q-opt[data-quiz-opt]").forEach((b) => { b.disabled = true; });
-      try {
-        const res = await invoke("record_answer", {
-          domain: getDomain(),
-          packsDir: packsDirValue(),
-          pack: card.dataset.pack,
-          itemId: card.dataset.item,
-          answered: btn.dataset.quizOpt,
-          source: "chat",
-        });
-        const k = res.kc || {};
-        if (note)
-          note.innerHTML = `${correct ? CHECK_SVG : CROSS_SVG}<span>${correct ? "正确" : "正确答案 " + esc(String(res.correct || ""))} · 本知识点 对/错 ${esc(String(k.correct ?? 0))}/${esc(String(k.wrong ?? 0))} · 掌握度 ${esc(pct(k.mastery))}</span>`;
-        if (!correct) {
-          const b = document.createElement("button");
-          b.className = "btn btn-ghost";
-          b.textContent = "让 AI 分析错因";
-          b.onclick = () => askWhyWrong(card, btn.dataset.quizOpt);
-          if (note) note.appendChild(b);
-        }
-        state.me.due = null;
-      } catch (e) {
-        if (note) note.textContent = "记账失败：" + readableErr(e);
-      }
+      };
+      note.querySelectorAll("[data-conf]").forEach((b) => {
+        b.onclick = () => {
+          conf = b.dataset.conf;
+          note.querySelectorAll("[data-conf]").forEach((x) => x.classList.toggle("sel", x === b));
+          submit();
+        };
+      });
+      note.querySelectorAll("[data-err]").forEach((b) => {
+        b.onclick = () => {
+          err = b.dataset.err;
+          note.querySelectorAll("[data-err]").forEach((x) => x.classList.toggle("sel", x === b));
+        };
+      });
     };
   });
 }
@@ -797,6 +840,7 @@ function decideIntent(text) {
   const t = String(text || "");
   // 「我该复习什么 / 怎么学 / 计划」属于求建议，优先于「出题」
   if (/(我该|该复习|复习什么|学什么|怎么学|建议|计划)/.test(t)) return "review-advice";
+  if (/(混合|交错|混着|换着练)/.test(t)) return "mixed";
   if (/(做题|练习|练一练|出题|出两道|测我|考我|几道|来一道|再来一题)/.test(t)) return "quiz";
   if (/(讲|解释|什么是|说说|教我|帮我理解|补一下|不会)/.test(t)) return "explain";
   if (findKcInCurrent(t)) return "explain";
@@ -837,6 +881,7 @@ async function sendMessage(text) {
 
     const intent = decideIntent(text);
     if (intent === "quiz") await doQuiz(pack);
+    else if (intent === "mixed") await doMixedQuiz(pack);
     else if (intent === "explain") await doExplain(pack, text);
     else if (intent === "review-advice") await doReviewAdvice(pack);
     else await doGuide(pack);
@@ -878,6 +923,35 @@ async function doQuiz(pack) {
     id: state.currentChatId,
     msg: { role: "assistant", kind: "quiz", text: `来一道「${kc.kc_name}」的题：`, data: { item, kc }, pack },
   });
+}
+
+/** 交错练习：2–3 个薄弱点各出一题，混在一次练习里 */
+async function doMixedQuiz(pack) {
+  let due = null;
+  try { due = await invoke("learn_due", { domain: getDomain(), packsDir: packsDirValue() }); state.me.due = due || null; } catch {}
+  const pool = ((due && (due.weak || [])) || []).concat((due && due.due) || []);
+  const uniq = [];
+  const seen = new Set();
+  for (const k of pool) { if (!seen.has(k.kc_id)) { seen.add(k.kc_id); uniq.push(k); } }
+  const pick = uniq.slice(0, 3);
+  if (!pick.length) return doGuide(pack, "还没有足够的数据做混合练习。先做几道题、攒出薄弱点再来。");
+  const items = [];
+  for (const k of pick) {
+    try {
+      const q = await invoke("learn_queue", { domain: getDomain(), packsDir: packsDirValue(), kcId: k.kc_id, n: 1 });
+      if (q && q.items && q.items[0]) items.push({ item: q.items[0], kc: k, pack: k.pack || pack });
+    } catch (e) {}
+  }
+  if (!items.length) return doGuide(pack, "这几个知识点暂时没有可出的题。");
+  await appendAssistantNote("混合练习：" + items.map((x) => x.kc.kc_name).join(" / ") + "（交错出题，比重刷一个点更有效）");
+  for (const x of items) {
+    state.chat = await invoke("chat_append", {
+      domain: getDomain(), id: state.currentChatId,
+      msg: { role: "assistant", kind: "quiz", text: "来一道「" + x.kc.kc_name + "」的题：", data: { item: x.item, kc: x.kc }, pack: x.pack },
+    });
+  }
+  for (const k of pick) if (!pack) { pack = k.pack; break; }
+  if (pack) await ensurePack(pack);
 }
 
 async function doExplain(pack, text) {
@@ -1404,7 +1478,7 @@ function paintMe(view) {
 
   let html = `<div class="me">
     <div class="me-head">
-      <h1>我的</h1>
+      <h1>今日</h1>
       <div class="me-sub mono muted">${domain ? "域：" + esc(tail(domain)) : "默认账号域"}${st && st.domain ? " · " + esc(tail(st.domain)) : ""}</div>
       ${st && st.path ? `<div class="me-path mono muted" title="${esc(st.path)}">user.md：${esc(tail(st.path))}</div>` : ""}
     </div>`;
@@ -1425,6 +1499,7 @@ function paintMe(view) {
     <button class="btn" id="me-sync" ${busy ? "disabled" : ""}>${busy === "sync" ? "同步中…" : "同步域"}</button>
     <button class="btn btn-ghost" id="me-delegate" ${busy ? "disabled" : ""}>${busy === "delegate" ? "导出中…" : "导出今日错题"}</button>
     <button class="btn btn-ghost" id="me-review" ${busy ? "disabled" : ""}>${busy === "review" ? "处理中…（调用模型，较慢）" : "处理域内委托"}</button>
+    <button class="btn btn-ghost" id="me-report">导出周报</button>
     <span class="mono muted">${state.me.loading ? "读取中…" : (() => {
       const sy = state.me.sync;
       const ev = sy ? sy.events_total : d ? d.events_total : null;
@@ -1471,13 +1546,13 @@ function paintMe(view) {
   }
 
   html += `<section class="me-block">
-    <div class="block-label">薄弱知识点（${weak.length}）</div>
-    ${weak.length ? kcList(weak, false) : `<div class="hint">${firstLoad ? "正在读取学习账本…" : "还没有薄弱项 —— 先去学习页做几道题，答错的会自动进这张表。"}</div>`}
+    <div class="block-label">今日复习队列（${due.length}）</div>
+    ${due.length ? kcList(due, true) : `<div class="hint">${firstLoad ? "正在读取学习账本…" : "今日没有到期的复习。"}</div>`}
   </section>`;
 
   html += `<section class="me-block">
-    <div class="block-label">今日复习队列（${due.length}）</div>
-    ${due.length ? kcList(due, true) : `<div class="hint">${firstLoad ? "正在读取学习账本…" : "今日没有到期的复习。"}</div>`}
+    <div class="block-label">薄弱知识点（${weak.length}）</div>
+    ${weak.length ? kcList(weak, false) : `<div class="hint">${firstLoad ? "正在读取学习账本…" : "还没有薄弱项 —— 先去学习页做几道题，答错的会自动进这张表。"}</div>`}
   </section>`;
 
   // 学习计划：append-only 任务清单，可在任一设备添加，账号域内共享
@@ -1517,6 +1592,8 @@ function paintMe(view) {
   if (bDel) bDel.onclick = runMeDelegate;
   const bRev = view.querySelector("#me-review");
   if (bRev) bRev.onclick = runMeReview;
+  const bRep = view.querySelector("#me-report");
+  if (bRep) bRep.onclick = runMeReport;
   view.querySelectorAll(".me-go").forEach((b) => {
     b.onclick = () => startReview(b.dataset.pack, b.dataset.kc);
   });
@@ -1614,6 +1691,20 @@ async function startReview(packId, kcId) {
   state.learn.pick = null;
   state.learn.classify = null;
   setTab("learn");
+}
+
+async function runMeReport() {
+  state.me.busy = "report";
+  refreshMe();
+  try {
+    const r = await invoke("export_report", { domain: getDomain(), packsDir: packsDirValue() });
+    state.me.report = r;
+    state.me.msg = "周报已生成：" + (r && r.path ? r.path : "");
+  } catch (e) {
+    state.me.error = "导出周报失败：" + readableErr(e);
+  }
+  state.me.busy = null;
+  refreshMe();
 }
 
 async function runMeSync() {

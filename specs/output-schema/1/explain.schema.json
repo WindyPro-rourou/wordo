@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordo/output-schema/1/explain.schema.json",
+  "title": "WORDO T2 explain",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["task", "schema_ver", "warnings", "kc_id", "explanation_md", "worked_example", "misconceptions", "followup_question", "tool_hints", "inferred"],
+  "properties": {
+    "task": { "const": "explain" },
+    "schema_ver": { "const": "1" },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "kc_id": { "type": "string", "minLength": 1 },
+    "prereq_gap": { "type": ["string", "null"] },
+    "explanation_md": { "type": "string", "minLength": 20, "maxLength": 2000 },
+    "worked_example": { "type": "string", "minLength": 5, "maxLength": 1200 },
+    "misconceptions": { "type": "array", "items": { "type": "string" } },
+    "followup_question": {
+      "type": "object",
+      "required": ["stem", "options", "answer"],
+      "properties": {
+        "stem": { "type": "string", "minLength": 3 },
+        "options": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "type": "string" } },
+        "answer": { "type": "string", "pattern": "^[A-Da-d]$" }
+      }
+    },
+    "tool_hints": {
+      "type": "array",
+      "items": { "enum": ["canvas-geometry", "graph-plot", "physics-sim", "timeline", "mindmap", "answer-board", "none"] }
+    },
+    "inferred": { "type": "boolean" }
+  }
+}

@@ -78,8 +78,10 @@ fn record_answer(
     item_id: String,
     answered: String,
     source: Option<String>,
+    error_type: Option<String>,
+    confidence: Option<String>,
 ) -> Result<Value, String> {
-    api::record_answer(&domain, &packs_dir, &pack, &item_id, &answered, source.as_deref())
+    api::record_answer(&domain, &packs_dir, &pack, &item_id, &answered, source.as_deref(), error_type.as_deref(), confidence.as_deref())
 }
 
 #[tauri::command]
@@ -166,6 +168,7 @@ fn record_judged(
     ok: bool,
     source: Option<String>,
     error_type: Option<String>,
+    confidence: Option<String>,
 ) -> Result<Value, String> {
     api::record_judged(
         &domain,
@@ -177,12 +180,23 @@ fn record_judged(
         ok,
         source.as_deref().unwrap_or("followup"),
         error_type.as_deref(),
+        confidence.as_deref(),
     )
 }
 
 #[tauri::command]
 fn record_explain(domain: String, pack: String, kc_id: String, model: String, source: Option<String>) -> Result<Value, String> {
     api::record_explain(&domain, &pack, &kc_id, &model, source.as_deref().unwrap_or("ai"))
+}
+
+#[tauri::command]
+fn verify_ledger(domain: String, packs_dir: String) -> Result<Value, String> {
+    api::verify_ledger(&domain, &packs_dir)
+}
+
+#[tauri::command]
+fn export_report(domain: String, packs_dir: String) -> Result<Value, String> {
+    api::export_report(&domain, &packs_dir)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -211,7 +225,9 @@ pub fn run() {
             chat_delete,
             detect_subject,
             record_judged,
-            record_explain
+            record_explain,
+            verify_ledger,
+            export_report
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

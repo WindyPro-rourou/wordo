@@ -34,6 +34,8 @@ pub struct Event {
     pub ts: String,
     pub node: String,
     pub kind: String,
+    /// 每节点单调递增序号（并发合并时可检测重放/乱序）
+    pub seq: u64,
     pub pack: String,
     pub item_id: String,
     pub kc_ids: Vec<String>,
@@ -41,6 +43,8 @@ pub struct Event {
     pub correct: String,
     pub ok: Option<bool>,
     pub error_type: Option<String>,
+    /// 答题信心档：certain | unsure | guess（用于区分「蒙对」）
+    pub confidence: Option<String>,
     pub source: String,
     pub model: String,
     pub task_id: String,
@@ -193,15 +197,37 @@ pub fn node_id(root: &Path) -> Result<String, String> {
 
 /* ══════════ 账本读写 ══════════ */
 
+/// 本节点账本里已有的最大 seq
+fn next_seq(ledger: &Path) -> u64 {
+    let mut max = 0u64;
+    if let Ok(t) = fs::read_to_string(ledger) {
+        for line in t.lines() {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+                if let Some(s) = v.get("seq").and_then(|x| x.as_u64()) {
+                    if s > max {
+                        max = s;
+                    }
+                }
+            }
+        }
+    }
+    max + 1
+}
+
 pub fn append_event(root: &Path, ev: &Event) -> Result<(), String> {
     let p = ensure_domain(root)?;
     fs::create_dir_all(p.ledger_dir()).map_err(|e| e.to_string())?;
-    let line = serde_json::to_string(ev).map_err(|e| e.to_string())?;
+    // 单调序号：同一节点串行追加时保证不重复、可检测丢失
+    let mut ev2 = ev.clone();
+    if ev2.seq == 0 {
+        ev2.seq = next_seq(&p.ledger_of(&ev.node));
+    }
+    let line = serde_json::to_string(&ev2).map_err(|e| e.to_string())?;
     use std::io::Write;
     let mut f = fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(p.ledger_of(&ev.node))
+        .open(p.ledger_of(&ev2.node))
         .map_err(|e| format!("打开账本失败: {e}"))?;
     writeln!(f, "{line}").map_err(|e| format!("写入账本失败: {e}"))?;
     Ok(())
@@ -283,7 +309,7 @@ pub fn derive(root: &Path, now: Option<DateTime<FixedOffset>>) -> LearnerState {
     nodes.dedup();
 
     // kc → [(ok, ts)]
-    let mut hist: HashMap<String, Vec<(bool, DateTime<FixedOffset>)>> = HashMap::new();
+    let mut hist: HashMap<String, Vec<(bool, DateTime<FixedOffset>, Option<String>, Option<String>)>> = HashMap::new();
     let mut acc: BTreeMap<String, KcState> = BTreeMap::new();
     let mut items: BTreeMap<String, bool> = BTreeMap::new();
     let d0 = today();
@@ -295,7 +321,7 @@ pub fn derive(root: &Path, now: Option<DateTime<FixedOffset>>) -> LearnerState {
         let ts = parse_ts(&ev.ts).unwrap_or(now);
         let ok = ev.ok_bool();
         for kc in &ev.kc_ids {
-            hist.entry(kc.clone()).or_default().push((ok, ts));
+            hist.entry(kc.clone()).or_default().push((ok, ts, ev.confidence.clone(), ev.error_type.clone()));
         }
         if !ev.item_id.is_empty() {
             items.insert(ev.item_id.clone(), ok);
@@ -320,12 +346,22 @@ pub fn derive(root: &Path, now: Option<DateTime<FixedOffset>>) -> LearnerState {
         let mut wsum = 0.0;
         let mut oksum = 0.0;
         let mut interval = 0.0f64;
-        for (ok, ts) in list {
+        for (ok, ts, conf, etype) in list {
             st.attempts += 1;
+            let guess = conf.as_deref() == Some("guess");
+            let unsure = conf.as_deref() == Some("unsure");
+            let misread = etype.as_deref() == Some("misread");
             if *ok {
                 st.correct += 1;
-                st.streak += 1;
-                interval = if st.streak == 1 { 24.0 } else { (interval * 2.0).min(MAX_INTERVAL_HOURS) };
+                if guess {
+                    // 蒙对 = 没有真实记忆证据：按「未掌握」调度，并打断连对
+                    st.streak = 0;
+                    interval = MIN_INTERVAL_HOURS;
+                } else {
+                    st.streak += 1;
+                    let growth = if unsure { 1.4 } else { 2.0 };
+                    interval = if st.streak == 1 { 24.0 } else { (interval * growth).min(MAX_INTERVAL_HOURS) };
+                }
             } else {
                 st.wrong += 1;
                 st.streak = 0;
@@ -336,14 +372,23 @@ pub fn derive(root: &Path, now: Option<DateTime<FixedOffset>>) -> LearnerState {
             // mastery 权重：72 小时半衰期
             let hours = (now - *ts).num_minutes() as f64 / 60.0;
             let w = 0.5f64.powf(hours / 72.0);
-            wsum += w;
-            if *ok {
-                oksum += w;
+            // 「看错题」是审题问题，不代表知识点没掌握 → 不计入掌握度
+            if !(!*ok && misread) {
+                wsum += w;
+                if *ok {
+                    // 蒙对几乎没有记忆证据，只按 15% 计入
+                    let cw = if guess { 0.15 } else if unsure { 0.7 } else { 1.0 };
+                    oksum += w * cw;
+                }
             }
         }
-        st.interval_hours = interval;
         st.mastery = if wsum > 0.0 { oksum / wsum } else { 0.0 };
         st.mastered = st.mastery >= MASTERY_OK && st.streak >= STREAK_OK;
+        // 已掌握进入低频抽查（≥14 天），避免占掉每日复习配额
+        if st.mastered && interval < 336.0 {
+            interval = 336.0;
+        }
+        st.interval_hours = interval;
         if let Some(lt) = st.last_ts.as_deref().and_then(parse_ts) {
             st.due_ts = Some((lt + Duration::minutes((interval * 60.0) as i64)).to_rfc3339_opts(SecondsFormat::Secs, true));
         }
@@ -383,8 +428,10 @@ pub fn due_list(st: &LearnerState, now: Option<DateTime<FixedOffset>>) -> Vec<Kc
         .cloned()
         .collect();
     v.sort_by(|a, b| {
-        b.wrong
-            .cmp(&a.wrong)
+        let ca = a.error_types.contains_key("concept_confused");
+        let cb = b.error_types.contains_key("concept_confused");
+        cb.cmp(&ca) // 概念不清排前面
+            .then(b.wrong.cmp(&a.wrong))
             .then(a.due_ts.cmp(&b.due_ts))
     });
     v
@@ -987,6 +1034,7 @@ pub fn record_answer(
     answered: &str,
     source: &str,
     error_type: Option<String>,
+    confidence: Option<String>,
 ) -> Result<AnswerOut, String> {
     let items = load_items(packs_dir);
     let it = items
@@ -1006,6 +1054,7 @@ pub fn record_answer(
     ev.ok = Some(ok);
     ev.error_type = error_type;
     ev.source = source.to_string();
+    ev.confidence = confidence;
     append_event(root, &ev)?;
 
     let st = derive(root, None);
@@ -1034,6 +1083,7 @@ pub fn record_judged(
     ok: bool,
     source: &str,
     error_type: Option<String>,
+    confidence: Option<String>,
 ) -> Result<Value, String> {
     let mut ev = Event::new(node, "answer");
     ev.pack = pack.to_string();
@@ -1044,6 +1094,7 @@ pub fn record_judged(
     ev.ok = Some(ok);
     ev.source = source.to_string();
     ev.error_type = error_type;
+    ev.confidence = confidence;
     append_event(root, &ev)?;
     let _ = write_user_md(root, packs_dir);
     let st = derive(root, None);
@@ -1065,4 +1116,203 @@ pub fn record_explain(root: &Path, node: &str, pack: &str, kc_id: &str, model: &
     ev.source = source.to_string();
     append_event(root, &ev)?;
     Ok(json!({ "ok": true, "eventId": ev.id }))
+}
+
+/// 账本完整性自检：重复 id / 每节点 seq 是否连续递增 / 引用不存在的知识点
+pub fn verify_ledger(root: &Path, packs_dir: &Path) -> Value {
+    let events = read_events(root);
+    let mut dup_ids: Vec<String> = Vec::new();
+    {
+        let mut seen = HashSet::new();
+        if let Ok(rd) = std::fs::read_dir(Paths::new(root).ledger_dir()) {
+            for f in rd.filter_map(|e| e.ok()).map(|e| e.path()) {
+                if f.extension().map_or(true, |x| x != "jsonl") {
+                    continue;
+                }
+                if let Ok(txt) = std::fs::read_to_string(&f) {
+                    for line in txt.lines() {
+                        if let Ok(v) = serde_json::from_str::<Value>(line) {
+                            if let Some(id) = v.get("id").and_then(|x| x.as_str()) {
+                                if !seen.insert(id.to_string()) {
+                                    dup_ids.push(id.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // 每节点 seq 连续性
+    let mut seq_issues: Vec<Value> = Vec::new();
+    let mut by_node: std::collections::BTreeMap<String, Vec<u64>> = std::collections::BTreeMap::new();
+    for e in &events {
+        by_node.entry(e.node.clone()).or_default().push(e.seq);
+    }
+    for (node, mut seqs) in by_node {
+        seqs.sort_unstable();
+        let uniq: HashSet<u64> = seqs.iter().cloned().collect();
+        let max = *seqs.last().unwrap_or(&0);
+        let missing = (1..=max).filter(|s| !uniq.contains(s)).count();
+        let dup = seqs.len() - uniq.len();
+        if missing > 0 || dup > 0 {
+            seq_issues.push(json!({ "node": node, "max": max, "missing": missing, "duplicate": dup }));
+        }
+    }
+    // 知识点引用
+    let known = kc_index(packs_dir).into_keys().collect::<HashSet<String>>();
+    let mut bad_kc: Vec<String> = Vec::new();
+    for e in &events {
+        for kc in &e.kc_ids {
+            if !known.is_empty() && !known.contains(kc) && !bad_kc.contains(kc) {
+                bad_kc.push(kc.clone());
+            }
+        }
+    }
+    json!({
+        "events": events.len(),
+        "nodes": by_node.keys().cloned().collect::<Vec<_>>(),
+        "duplicate_ids": dup_ids,
+        "seq_issues": seq_issues,
+        "unknown_kc_refs": bad_kc,
+        "ok": dup_ids.is_empty() && seq_issues.is_empty() && bad_kc.is_empty(),
+    })
+}
+
+/// 生成近 7 天学习周报（Markdown，写入 <domain>/reports/）
+pub fn weekly_report(root: &Path, packs_dir: &Path) -> Result<Value, String> {
+    let p = ensure_domain(root)?;
+    let st = derive(root, None);
+    let events = read_events(root);
+    let idx = kc_index(packs_dir);
+    let now = chrono::Local::now();
+    let from = now - Duration::days(7);
+    let name = |id: &str| idx.get(id).map(|(n, _)| n.clone()).unwrap_or_else(|| id.to_string());
+
+    let mut answers = 0u32;
+    let mut correct = 0u32;
+    let mut wrongs: Vec<&Event> = Vec::new();
+    let mut kc_touch: HashSet<String> = HashSet::new();
+    for e in &events {
+        if let Some(ts) = parse_ts(&e.ts) {
+            if ts < from {
+                continue;
+            }
+        }
+        if e.kind == "answer" {
+            answers += 1;
+            if e.ok_bool() {
+                correct += 1;
+            } else {
+                wrongs.push(e);
+            }
+            for k in &e.kc_ids {
+                kc_touch.insert(k.clone());
+            }
+        }
+    }
+    let plan = plan_list(root);
+    let plan_done = plan
+        .iter()
+        .filter(|x| x.get("done").and_then(|v| v.as_bool()).unwrap_or(false))
+        .count();
+
+    let mut md = String::new();
+    md.push_str(&format!(
+        "# WORDO 学习周报 · {} ~ {}\n\n",
+        from.format("%Y-%m-%d"),
+        now.format("%Y-%m-%d")
+    ));
+    md.push_str(&format!(
+        "节点 {} ｜ 事件 {} 条 ｜ 生成于 {}\n\n",
+        st.node,
+        events.len(),
+        now.format("%Y-%m-%d %H:%M")
+    ));
+    md.push_str("## 概览\n");
+    let rate = if answers > 0 {
+        format!("{:.0}%", correct as f64 / answers as f64 * 100.0)
+    } else {
+        "-".to_string()
+    };
+    md.push_str(&format!("- 作答 **{}** 次，正确 **{}**（{}）\n", answers, correct, rate));
+    md.push_str(&format!(
+        "- 涉及知识点 **{}** 个；当前薄弱 **{}** 个；今日到期 **{}** 个\n",
+        kc_touch.len(),
+        weak_list(&st).len(),
+        due_list(&st, None).len()
+    ));
+    md.push_str(&format!("- 学习计划完成 **{}/{}**\n\n", plan_done, plan.len()));
+
+    md.push_str("## 薄弱与到期\n");
+    let weak = weak_list(&st);
+    if weak.is_empty() {
+        md.push_str("- （无）\n");
+    } else {
+        md.push_str("| 知识点 | 掌握度 | 对 / 错 | 到期 |\n|---|---|---|---|\n");
+        for k in weak.iter().take(10) {
+            md.push_str(&format!(
+                "| {} | {:.2} | {}/{} | {} |\n",
+                name(&k.kc_id),
+                k.mastery,
+                k.correct,
+                k.wrong,
+                k.due_ts.clone().unwrap_or_else(|| "-".to_string())
+            ));
+        }
+    }
+    md.push('\n');
+
+    md.push_str("## 本周错题\n");
+    if wrongs.is_empty() {
+        md.push_str("- （无）\n");
+    } else {
+        for e in wrongs.iter().rev().take(20) {
+            md.push_str(&format!(
+                "- {} `{}` 我选 {} / 正确 {}（{}）\n",
+                &e.ts[..16.min(e.ts.len())],
+                e.item_id,
+                if e.answered.is_empty() { "?" } else { &e.answered },
+                e.correct,
+                e.kc_ids.iter().map(|k| name(k)).collect::<Vec<_>>().join("、")
+            ));
+        }
+    }
+    md.push('\n');
+
+    md.push_str("## 学习计划\n");
+    if plan.is_empty() {
+        md.push_str("- （无）\n");
+    } else {
+        for x in &plan {
+            let done = x.get("done").and_then(|v| v.as_bool()).unwrap_or(false);
+            md.push_str(&format!(
+                "- [{}] {}\n",
+                if done { "x" } else { " " },
+                x.get("text").and_then(|v| v.as_str()).unwrap_or("")
+            ));
+        }
+    }
+    md.push('\n');
+
+    md.push_str("## 建议下一步\n");
+    let mut suggestions: Vec<String> = Vec::new();
+    for k in weak.iter().take(2) {
+        suggestions.push(format!("先补齐「{}」（掌握度 {:.0}%）", name(&k.kc_id), k.mastery * 100.0));
+    }
+    for k in due_list(&st, None).iter().take(2) {
+        suggestions.push(format!("今日到期：「{}」", name(&k.kc_id)));
+    }
+    if suggestions.is_empty() {
+        suggestions.push("保持节奏：说「混合练 3 个薄弱点」做一次交错练习".to_string());
+    }
+    for s in suggestions {
+        md.push_str(&format!("- {}\n", s));
+    }
+
+    let dir = p.root.join("reports");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let file = dir.join(format!("周报-{}.md", now.format("%Y-%m-%d")));
+    fs::write(&file, &md).map_err(|e| e.to_string())?;
+    Ok(json!({ "path": file.display().to_string(), "markdown": md }))
 }

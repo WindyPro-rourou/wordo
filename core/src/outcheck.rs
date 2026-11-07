@@ -41,6 +41,11 @@ pub fn check(task: &str, v: &Value, kc_ids: &HashSet<String>) -> Vec<String> {
     }
     if v.get("warnings").and_then(|x| x.as_array()).is_none() {
         errs.push("缺少 warnings 数组".to_string());
+    } else if v.get("warnings").and_then(|x| x.as_array()).map_or(false, |a| a.iter().any(|w| !w.is_string())) {
+        errs.push("warnings 元素必须是字符串".to_string());
+    }
+    if v.get("schema_ver").and_then(|x| x.as_str()) != Some("1") {
+        errs.push("schema_ver 必须为 \"1\"".to_string());
     }
 
     match task {
@@ -60,6 +65,11 @@ pub fn check(task: &str, v: &Value, kc_ids: &HashSet<String>) -> Vec<String> {
                 }
             }
             check_enum(v, "error_type", ERROR_TYPES, &mut errs);
+            if let Some(sf) = v.get("secondary_factor").and_then(|x| x.as_str()) {
+                if !ERROR_TYPES.contains(&sf) || sf == "none" {
+                    errs.push(format!("secondary_factor「{sf}」不在允许枚举内"));
+                }
+            }
             check_enum(v, "suggested_action", ACTIONS, &mut errs);
             if let Some(c) = v.get("confidence").and_then(|x| x.as_f64()) {
                 if !(0.0..=1.0).contains(&c) {
@@ -73,6 +83,11 @@ pub fn check(task: &str, v: &Value, kc_ids: &HashSet<String>) -> Vec<String> {
             }
         }
         "explain" => {
+            if let Some(em) = v.get("explanation_md").and_then(|x| x.as_str()) {
+                if em.chars().count() > 2000 {
+                    errs.push("explanation_md 超过 2000 字".to_string());
+                }
+            }
             for k in [
                 "kc_id",
                 "explanation_md",

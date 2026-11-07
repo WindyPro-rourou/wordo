@@ -1,0 +1,62 @@
+{
+  "model": "auto/deepseek-v4.1-flash",
+  "repeat": 3,
+  "at": "2026-11-07T13:34:27.288Z",
+  "cases": [
+    {
+      "case": "explain-en-past",
+      "runs": 3,
+      "fields": 3,
+      "agree": 3,
+      "rate": 100,
+      "per": {
+        "kc_id": true,
+        "options": true,
+        "answer": true
+      },
+      "samples": [
+        {
+          "kc_id": "kc_eng_0002",
+          "options": 4,
+          "answer": "B"
+        },
+        {
+          "kc_id": "kc_eng_0002",
+          "options": 4,
+          "answer": "B"
+        },
+        {
+          "kc_id": "kc_eng_0002",
+          "options": 4,
+          "answer": "B"
+        }
+      ]
+    },
+    {
+      "case": "classify-1",
+      "runs": 3,
+      "fields": 2,
+      "agree": 2,
+      "rate": 100,
+      "per": {
+        "item_id": true,
+        "error_type": true
+      },
+      "samples": [
+        {
+          "item_id": "it_eng_0001",
+          "error_type": "concept_confused"
+        },
+        {
+          "item_id": "it_eng_0001",
+          "error_type": "concept_confused"
+        },
+        {
+          "item_id": "it_eng_0001",
+          "error_type": "concept_confused"
+        }
+      ]
+    }
+  ],
+  "overallSelf": 100
+}
