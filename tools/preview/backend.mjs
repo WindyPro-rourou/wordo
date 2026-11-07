@@ -271,7 +271,7 @@ export function derive(domain, at = new Date()) {
 
 function dueList(st, at = new Date()) {
   return [...st.kcs.values()]
-    .filter((k) => k.attempts > 0 && !k.mastered)
+    .filter((k) => k.attempts > 0 && !k.mastered) // 已掌握不占每日配额
     .filter((k) => k.due_ts && parseTs(k.due_ts) <= at)
     .sort((a, b) => (b.error_types && b.error_types.concept_confused ? 1 : 0) - (a.error_types && a.error_types.concept_confused ? 1 : 0) || b.wrong - a.wrong || String(a.due_ts).localeCompare(String(b.due_ts)));
 }

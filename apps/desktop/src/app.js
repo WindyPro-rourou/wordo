@@ -768,6 +768,14 @@ function bindQuiz(view) {
             b.textContent = "让 AI 分析错因";
             b.onclick = () => askWhyWrong(card, btn.dataset.quizOpt);
             note.appendChild(b);
+            // 同一知识点连续两次答错 → 中断刷题，换一种讲法回看（评审建议）
+            if ((k.wrong || 0) >= 2) {
+              const b2 = document.createElement("button");
+              b2.className = "btn btn-ghost";
+              b2.textContent = "换种讲法讲一遍";
+              b2.onclick = () => explainAlternate(kcId || (state.current && state.current.meta.id && ""), kcId);
+              note.appendChild(b2);
+            }
           }
           state.me.due = null;
         } catch (e) {
@@ -952,6 +960,26 @@ async function doMixedQuiz(pack) {
   }
   for (const k of pick) if (!pack) { pack = k.pack; break; }
   if (pack) await ensurePack(pack);
+}
+
+/** 换一种教学法重讲（避免「错→刷题→再错」死循环） */
+async function explainAlternate(packId, kcId) {
+  const pack = packId || (state.chat && state.chat.pack) || "";
+  const kc = ((state.current && state.current.kcs) || []).find((x) => x.id === kcId) || null;
+  if (!kc || !pack) return doGuide(pack, "先确认一下要重讲哪个知识点。");
+  const p = packOf(pack);
+  try {
+    const res = await invoke("ask_model", {
+      req: {
+        task: "explain", packPath: p ? p.path : "", domain: getDomain(), packsDir: packsDirValue(),
+        payload: { kc_id: kc.id, kc_name: kc.name, toc: kc.toc, learner: {}, style_hint: "请换一种讲法：不要重复上次的文字推导，改用生活类比或图示化的分步描述" },
+      },
+    });
+    if (res && res.data) {
+      state.chat = await invoke("chat_append", { domain: getDomain(), id: state.currentChatId, msg: { role: "assistant", kind: "explain", text: (res.data.explanation_md || "").slice(0, 60), data: { ...res.data, __meta: { model: res.model, attempts: res.attempts } }, pack } });
+      await loadChats(); render();
+    }
+  } catch (e) { state.chatMsg = "重讲失败：" + readableErr(e); render(); }
 }
 
 async function doExplain(pack, text) {

@@ -420,7 +420,7 @@ pub fn due_list(st: &LearnerState, now: Option<DateTime<FixedOffset>>) -> Vec<Kc
     let mut v: Vec<KcState> = st
         .kcs
         .values()
-        .filter(|k| k.attempts > 0)
+        .filter(|k| k.attempts > 0 && !k.mastered) // 已掌握不占每日复习配额（低频抽查，见 interval≥14d）
         .filter(|k| match k.due_ts.as_deref().and_then(parse_ts) {
             Some(d) => d <= now,
             None => false,
