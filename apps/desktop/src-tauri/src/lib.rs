@@ -260,7 +260,7 @@ mod tests {
         assert_eq!(items.len(), 1);
         let item_id = items[0].get("id").and_then(|v| v.as_str()).unwrap().to_string();
 
-        let ra = api::record_answer(&d, &packs, "english.high", &item_id, "A", Some("quiz")).expect("record");
+        let ra = api::record_answer(&d, &packs, "english.high", &item_id, "A", Some("quiz"), None, None).expect("record");
         for k in ["ok", "correct", "kc", "nextDue", "eventId"] {
             assert!(ra.get(k).is_some(), "record_answer 缺 {k}");
         }

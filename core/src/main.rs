@@ -254,7 +254,7 @@ fn main() -> ExitCode {
             let source = arg(&args, "--source").unwrap_or_else(|| "quiz".to_string());
             let et = arg(&args, "--error-type");
             let pack = arg(&args, "--pack-name").unwrap_or_default();
-            match learn::record_answer(&domain, &packs, &node, &pack, &item, &answered, &source, et) {
+            match learn::record_answer(&domain, &packs, &node, &pack, &item, &answered, &source, et, None) {
                 Ok(out) => {
                     if json_out {
                         print_json(&json!({
@@ -321,7 +321,7 @@ fn main() -> ExitCode {
             println!("▶ 开始一轮学习环路：{}（节点 {node}）", kc);
             for (i, it) in items.iter().enumerate() {
                 let a = answers.get(i).cloned().unwrap_or_else(|| "A".to_string());
-                match learn::record_answer(&domain, &packs, &node, &it.pack, &it.id, &a, "quiz", None) {
+                match learn::record_answer(&domain, &packs, &node, &it.pack, &it.id, &a, "quiz", None, None) {
                     Ok(out) => println!(
                         "  {}. [{}] {} → 我选 {} · {} · 正确 {}",
                         i + 1,
@@ -547,6 +547,8 @@ fn cmd_api(args: &[String]) -> ExitCode {
             &s("itemId"),
             &s("answered"),
             os("source").as_deref(),
+            os("errorType").as_deref(),
+            os("confidence").as_deref(),
         ),
         "learn_sync" => api::learn_sync(&s("domain"), &s("packsDir")),
         "learn_delegate" => api::learn_delegate(&s("domain"), &s("packsDir")),
