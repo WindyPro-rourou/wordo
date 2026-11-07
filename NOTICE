@@ -1,0 +1,23 @@
+WORDO NOTICE
+============
+
+本仓库采用分层许可（layered licensing）：
+
+1) 本仓库公开部分（specs/ · packs/ · tools/ · docs/ · apps/desktop 前端）
+   → PolyForm Noncommercial License 1.0.0（见 LICENSE）
+   个人/非商业免费；商业使用需授权。
+
+2) 核心实现（infar 及未来闭源部分）
+   → 不属于本许可范围，闭源分发；本仓库仅包含其公开接口与规范。
+
+3) 学科包内容（packs/ 内的知识树、题目、讲解）
+   → 计划采用 CC BY-SA 4.0（待最终确认）；在其生效前，随本仓库 PolyForm NC 条款。
+
+4) 依赖红线
+   → 核心只允许 MIT / Apache-2.0 / BSD 类许可；禁止 GPL / AGPL。
+
+5) 第三方内容
+   → docs/资料 与 docs/评审 中的第三方引用仅作研究记录，版权归原作者；
+     如涉侵权请联系移除。
+
+商业授权 / 其它询问：通过 GitHub Issues 联系仓库所有者。
