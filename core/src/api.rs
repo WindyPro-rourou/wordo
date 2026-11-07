@@ -173,7 +173,17 @@ pub fn record_answer(
     let d = resolve_domain(domain);
     let p = resolve_packs(packs_dir);
     let node = learn::node_id(&d)?;
-    let out = learn::record_answer(&d, &p, &node, pack, item_id, answered, source.unwrap_or("quiz"), None)?;
+    let out = learn::record_answer(
+        &d,
+        &p,
+        &node,
+        pack,
+        item_id,
+        answered,
+        source.unwrap_or("quiz"),
+        error_type.map(|s| s.to_string()),
+        confidence.map(|s| s.to_string()),
+    )?;
     // 账本变了，派生文件随之刷新
     let _ = learn::write_user_md(&d, &p);
     Ok(json!({

@@ -1149,7 +1149,8 @@ pub fn verify_ledger(root: &Path, packs_dir: &Path) -> Value {
     for e in &events {
         by_node.entry(e.node.clone()).or_default().push(e.seq);
     }
-    for (node, mut seqs) in by_node {
+    for (node, seqs_ref) in &by_node {
+        let mut seqs = seqs_ref.clone();
         seqs.sort_unstable();
         let uniq: HashSet<u64> = seqs.iter().cloned().collect();
         let max = *seqs.last().unwrap_or(&0);
