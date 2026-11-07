@@ -7,11 +7,13 @@ const { invoke } = window.__TAURI__.core;
 const state = {
   packs: [],
   current: null,
-  tab: "learn",
+  tab: "home",
   config: null,
   presets: [],
   configPath: "",
   learn: { kcId: null, ai: null, aiLoading: false, aiError: null, pick: null, classify: null, classifyLoading: false },
+  /* 首页控制台：输入框内容 / 提示消息 / 取数中 */
+  home: { q: "", msg: "", loading: false },
   /* 「我的」= 学习账本视图：state(user.md) / due(薄弱+今日队列) / sync(域同步结果) / msg(操作反馈) */
   me: { state: null, due: null, sync: null, review: null, msg: "", error: null, loading: false, busy: null, seq: 0, view: null },
 };
@@ -27,19 +29,41 @@ async function boot() {
   document.querySelectorAll(".tab").forEach((t) => {
     t.onclick = () => setTab(t.dataset.tab);
   });
+  document.querySelectorAll(".tabbar-btn").forEach((t) => {
+    t.onclick = () => setTab(t.dataset.tab);
+  });
+  const sb = document.getElementById("subject-btn");
+  if (sb) sb.onclick = openSubjectSheet;
+  const sc = document.getElementById("sheet-close");
+  if (sc) sc.onclick = closeSubjectSheet;
+  const sheet = document.getElementById("subject-sheet");
+  if (sheet) sheet.addEventListener("click", (e) => { if (e.target === sheet) closeSubjectSheet(); });
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeSubjectSheet();
+    // 首页数字快捷键：输入框为空时也生效（输入框非空时让位给打字）
+    if (state.tab === "home" && /^[1-9]$/.test(e.key)) {
+      const tag = ((e.target && e.target.tagName) || "").toLowerCase();
+      const inField = tag === "input" || tag === "textarea" || tag === "select";
+      const empty = inField && tag === "input" ? !String(e.target.value || "").trim() : false;
+      if (inField && !empty) return;
+      const a = homeActions()[Number(e.key) - 1];
+      if (a) { e.preventDefault(); a.run(); }
+    }
+  });
   await loadConfig();
   await refreshPacks();
   if (state.packs.length) {
     await openPack(state.packs[0].path);
-  } else {
-    // 没有学科包时也让页签可见：「我的」读的是账本，不依赖具体学科包
-    document.getElementById("tabs").classList.remove("hidden");
   }
+  // 一律从首页控制台进入（不依赖是否已选学科包）
+  setTab("home");
 }
 
 function setTab(tab) {
   state.tab = tab;
   document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x.dataset.tab === tab));
+  document.querySelectorAll(".tabbar-btn").forEach((x) => x.classList.toggle("active", x.dataset.tab === tab));
+  document.body.dataset.tab = tab;
   document.getElementById("tabs").classList.toggle("hidden", !state.current && tab !== "settings" && tab !== "me");
   render();
   const v = document.getElementById("view");
@@ -74,6 +98,8 @@ async function refreshPacks() {
 function renderPackList() {
   const el = document.getElementById("pack-list");
   el.innerHTML = "";
+  // 手机端顶栏的「当前学科」与选择浮层
+  paintSubjectBar();
   if (!state.packs.length) {
     el.innerHTML = `<div class="empty">该目录下没有发现学科包</div>`;
     return;
@@ -95,11 +121,50 @@ function renderPackList() {
         <span>${esc(p.subjectId || "")}</span>${badge}
         <span style="margin-left:auto">${p.kcCount} KC · ${p.itemCount} 题</span>
       </div>`;
-    btn.onclick = () => openPack(p.path);
+    btn.onclick = () => { openPack(p.path); closeSubjectSheet(); };
     el.appendChild(btn);
   });
   observeReveals(el);
 }
+
+/** 顶栏「当前学科」+ 学科选择浮层内容 */
+function paintSubjectBar() {
+  const cur = state.current && state.current.meta;
+  const name = cur ? (cur.name || cur.id || "学科") : (state.packs[0] ? state.packs[0].name : "选择学科");
+  const nameEl = document.getElementById("subject-name");
+  if (nameEl) nameEl.textContent = name || "选择学科";
+  const list = document.getElementById("subject-sheet-list");
+  if (list) {
+    list.innerHTML = state.packs.length
+      ? state.packs
+          .map((p) => {
+            const active = cur && cur.id === p.subjectId;
+            return `<button class="sheet-item ${active ? "active" : ""}" data-path="${esc(p.path)}">
+              <span class="sheet-item-name">${esc(p.name || p.subjectId || "未命名")}</span>
+              <span class="sheet-item-sub mono">${esc(p.subjectId || "")} · ${p.kcCount} KC · ${p.itemCount} 题</span>
+            </button>`;
+          })
+          .join("")
+      : `<div class="empty">没有学科包</div>`;
+    list.querySelectorAll(".sheet-item").forEach((b) => {
+      b.onclick = () => { openPack(b.dataset.path); closeSubjectSheet(); };
+    });
+  }
+}
+
+function openSubjectSheet() {
+  const s = document.getElementById("subject-sheet");
+  if (!s) return;
+  paintSubjectBar();
+  s.classList.remove("hidden");
+  document.body.classList.add("sheet-open");
+}
+function closeSubjectSheet() {
+  const s = document.getElementById("subject-sheet");
+  if (s) s.classList.add("hidden");
+  document.body.classList.remove("sheet-open");
+}
+
 
 async function openPack(path) {
   try {
@@ -120,8 +185,215 @@ async function openPack(path) {
 }
 
 /* ══════════ 主视图分发 ══════════ */
+/* ══════════ 首页：控制台（CLI 风格入口） ══════════ */
+function greetingWord() {
+  const h = new Date().getHours();
+  if (h < 6) return "凌晨好";
+  if (h < 11) return "早上好";
+  if (h < 14) return "中午好";
+  if (h < 18) return "下午好";
+  return "晚上好";
+}
+
+/** 根据真实账本算出「今天能干什么」的编号动作 */
+function homeActions() {
+  const d = state.me.due;
+  const due = (d && d.due) || [];
+  const weak = (d && d.weak) || [];
+  const kcs = (state.current && state.current.kcs) || [];
+  const seen = new Set([...due, ...weak].map((x) => x.kc_id));
+  const fresh = kcs.find((k) => !seen.has(k.id)) || null;
+  const A = [];
+  if (due.length)
+    A.push({ key: "review", name: "继续复习", desc: `${due[0].kc_name} · 错 ${due[0].wrong} 次 · 掌握度 ${pct(due[0].mastery)} · 已到期`, run: () => startReview(due[0].pack, due[0].kc_id) });
+  if (weak.length)
+    A.push({ key: "weak", name: due.length ? "再攻一个薄弱点" : "攻克薄弱点", desc: `${weak[0].kc_name} · 掌握度 ${pct(weak[0].mastery)} · 错 ${weak[0].wrong} 次`, run: () => startReview(weak[0].pack, weak[0].kc_id) });
+  if (fresh) A.push({ key: "new", name: "学新内容", desc: `${fresh.name} · ${state.current ? state.current.meta.name || state.current.meta.id : ""}`, run: () => { state.learn.kcId = fresh.id; state.learn.ai = null; setTab("learn"); } });
+  else if (kcs.length) A.push({ key: "learn", name: "进入学习", desc: "挑一个知识点看讲解 / 做题", run: () => setTab("learn") });
+  A.push({ key: "me", name: "看看我的账本", desc: "薄弱点 · 复习队列 · user.md 全文", run: () => setTab("me") });
+  A.push({ key: "settings", name: "设置模型与学科包", desc: hasKey() ? "已配置 · " + activeModelLabel() : "还没有配置 API Key", run: () => setTab("settings") });
+  return A;
+}
+
+function renderHome(view) {
+  if (!state.me.due) loadHomeData();
+  const d = state.me.due;
+  const node = (d && arrOf(d.nodes)[0]) || "local";
+  const actions = homeActions();
+  const t = new Date();
+  const dateStr = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")} 周${"日一二三四五六"[t.getDay()]}`;
+  const recap = d
+    ? `今日作答 ${d.today_answers} · 错 ${d.today_wrong} · 薄弱 ${(d.weak || []).length} · 到期 ${(d.due || []).length}`
+    : "正在读取学习账本…";
+  const subj = state.current ? state.current.meta.name || state.current.meta.id : "未选择学科";
+
+  view.innerHTML = `
+  <div class="console">
+    <div class="console-bar mono">
+      <span class="dot"></span><span class="console-path">wordo</span>
+      <span class="sep">·</span><span>${esc(node)}</span>
+      <span class="sep">·</span><span>${esc(dateStr)}</span>
+      <span class="console-bar-right">${esc(subj)}</span>
+    </div>
+
+    <div class="console-grid">
+      <div class="console-main">
+        <h1 class="console-title">${greetingWord()}，今天想学点什么？<span class="caret">▌</span></h1>
+        <div class="console-recap mono">${esc(recap)}</div>
+
+        <ol class="cmds">
+          ${actions
+            .map(
+              (a, i) => `<li><button class="cmd" data-idx="${i}">
+                <span class="cmd-k mono">${i + 1}</span>
+                <span class="cmd-body"><span class="cmd-name">${esc(a.name)}</span><span class="cmd-desc mono">${esc(a.desc)}</span></span>
+                <span class="cmd-arrow">→</span>
+              </button></li>`
+            )
+            .join("")}
+        </ol>
+
+        <form class="console-prompt" id="home-form" autocomplete="off">
+          <span class="prompt-sign mono">›</span>
+          <input id="home-input" autocomplete="off" spellcheck="false" placeholder="${isPhone() ? "输入 /复习、/讲解…" : "输入命令，或直接说「讲解 一般过去时」…"}" />
+          <button class="btn" type="submit">执行</button>
+        </form>
+        <div class="console-hints mono">/复习　/薄弱　/讲解 一般过去时　/计划　/同步　/账本　/设置　·　按 1–5 直接执行</div>
+        ${state.home.msg ? `<div class="console-msg">${esc(state.home.msg)}</div>` : ""}
+      </div>
+
+      <aside class="console-side">
+        <div class="side-block">
+          <div class="side-label mono">今日</div>
+          <div class="side-kpis">
+            <div><b>${d ? d.today_answers : "—"}</b><span>作答</span></div>
+            <div><b>${d ? d.today_wrong : "—"}</b><span>错题</span></div>
+            <div><b>${d ? (d.due || []).length : "—"}</b><span>到期</span></div>
+          </div>
+        </div>
+        <div class="side-block">
+          <div class="side-label mono">到期复习</div>
+          ${(d && d.due && d.due.length)
+            ? d.due.slice(0, 3).map((k) => `<button class="side-row" data-pack="${esc(k.pack || "")}" data-kc="${esc(k.kc_id || "")}"><span class="side-row-name">${esc(k.kc_name || k.kc_id)}</span><span class="side-row-meta mono">${esc(pct(k.mastery))}</span></button>`).join("")
+            : `<div class="side-empty">暂无到期</div>`}
+        </div>
+        <div class="side-block">
+          <div class="side-label mono">薄弱点</div>
+          ${(d && d.weak && d.weak.length)
+            ? d.weak.slice(0, 3).map((k) => `<div class="side-row static"><span class="side-row-name">${esc(k.kc_name || k.kc_id)}</span><span class="side-row-meta mono">错 ${esc(String(k.wrong || 0))} · ${esc(pct(k.mastery))}</span></div>`).join("")
+            : `<div class="side-empty">暂无薄弱项</div>`}
+        </div>
+        <div class="side-block">
+          <div class="side-label mono">学习计划</div>
+          ${(() => {
+            const plan = (state.me.plan || []).filter((x) => !x.done).slice(0, 3);
+            return plan.length ? plan.map((x) => `<div class="side-row static"><span class="side-row-name">${esc(x.text)}</span></div>`).join("") : `<div class="side-empty">暂无待办</div>`;
+          })()}
+        </div>
+      </aside>
+    </div>
+  </div>`;
+
+  view.querySelectorAll(".cmd").forEach((b) => {
+    b.onclick = () => {
+      const a = actions[Number(b.dataset.idx)];
+      if (a) a.run();
+    };
+  });
+  view.querySelectorAll(".side-row[data-kc]").forEach((b) => {
+    b.onclick = () => startReview(b.dataset.pack, b.dataset.kc);
+  });
+  const form = view.querySelector("#home-form");
+  if (form) form.onsubmit = (e) => { e.preventDefault(); runHomeCommand(view.querySelector("#home-input").value); };
+  const inp = view.querySelector("#home-input");
+  if (inp) { if (state.home.q) inp.value = state.home.q; inp.focus(); }
+  observeReveals(view);
+}
+
+async function loadHomeData() {
+  if (state.home.loading) return;
+  state.home.loading = true;
+  const domain = getDomain();
+  const packsDir = packsDirValue();
+  try {
+    const [due, plan] = await Promise.all([
+      invoke("learn_due", { domain, packsDir }),
+      invoke("learn_plan", { domain, action: "list" }),
+    ]);
+    state.me.due = due || null;
+    state.me.plan = (plan && plan.plan) || [];
+  } catch (e) {
+    state.home.msg = "读取学习账本失败：" + readableErr(e);
+  } finally {
+    state.home.loading = false;
+  }
+  if (state.tab === "home") render();
+}
+
+/** 首页命令：/复习 /薄弱 /讲解 X /计划 /同步 /账本 /设置；也支持点数字与自由文本 */
+function runHomeCommand(raw) {
+  const t = String(raw || "").trim();
+  state.home.q = t;
+  if (!t) return;
+  const actions = homeActions();
+  const findKc = (name) => {
+    const kcs = (state.current && state.current.kcs) || [];
+    const n = name.trim();
+    return kcs.find((k) => k.id === n) || kcs.find((k) => k.name === n) || kcs.find((k) => n && (k.name.includes(n) || n.includes(k.name))) || null;
+  };
+  if (/^\d+$/.test(t)) {
+    const a = actions[Number(t) - 1];
+    if (a) return a.run();
+  }
+  const m = t.match(/^\/(\S+)\s*(.*)$/);
+  const cmd = m ? m[1] : "";
+  const rest = m ? m[2].trim() : t;
+  const goKc = (kc) => {
+    state.learn.kcId = kc.id;
+    state.learn.ai = null;
+    setTab("learn");
+  };
+  switch (cmd) {
+    case "复习": case "review": {
+      const a = actions.find((x) => x.key === "review");
+      if (a) return a.run();
+      state.home.msg = "今天没有到期复习。去学习页随便做几道吧。";
+      return render();
+    }
+    case "薄弱": case "weak": {
+      const a = actions.find((x) => x.key === "weak");
+      if (a) return a.run();
+      state.home.msg = "目前没有薄弱项（都掌握了，或还没开始做题）。";
+      return render();
+    }
+    case "讲解": case "explain": {
+      const kc = findKc(rest);
+      if (!kc) {
+        state.home.msg = `没找到「${rest || "（空）"}」。可用知识点：${((state.current && state.current.kcs) || []).map((k) => k.name).join("、") || "（先选择学科包）"}`;
+        return render();
+      }
+      goKc(kc);
+      setTimeout(() => { const b = document.querySelector("#btn-ai"); if (b) b.click(); }, 80);
+      return;
+    }
+    case "计划": case "plan": return setTab("me");
+    case "同步": case "sync": setTab("me"); setTimeout(() => document.querySelector("#me-sync") && document.querySelector("#me-sync").click(), 150); return;
+    case "账本": case "me": return setTab("me");
+    case "设置": case "config": return setTab("settings");
+    default: {
+      // 自由文本：先当知识点名，再当「复习/薄弱」关键词
+      const kc = findKc(t);
+      if (kc) { goKc(kc); setTimeout(() => { const b = document.querySelector("#btn-ai"); if (b) b.click(); }, 80); return; }
+      if (/复习|做题|练/.test(t)) { const a = actions.find((x) => x.key === "review") || actions.find((x) => x.key === "weak"); if (a) return a.run(); }
+      state.home.msg = `没认出这条命令。试试：/复习 · /薄弱 · /讲解 一般过去时 · /计划`;
+      return render();
+    }
+  }
+}
+
 function render() {
   const view = document.getElementById("view");
+  if (state.tab === "home") return renderHome(view);
   if (state.tab === "settings") return renderSettings(view);
   if (state.tab === "me") return renderMe(view);
   if (!state.current) return viewMessage("从左侧选择一个学科包");
@@ -486,7 +758,13 @@ function getDomain() {
 }
 function packsDirValue() {
   const el = document.getElementById("packs-dir");
-  return el && typeof el.value === "string" ? el.value.trim() : "";
+  const v = el && typeof el.value === "string" ? el.value.trim() : "";
+  if (v) return v;
+  try { return (localStorage.getItem("packsDir") || DEFAULT_PACKS_DIR).trim(); } catch { return DEFAULT_PACKS_DIR; }
+}
+/** 手机竖屏判定（≤640px 用卡片式布局，不用表格） */
+function isPhone() {
+  try { return window.matchMedia("(max-width: 640px)").matches; } catch { return false; }
 }
 function readableErr(e) {
   const s = e && e.message ? e.message : String(e == null ? "" : e);
@@ -640,12 +918,12 @@ function paintMe(view) {
 
   html += `<section class="me-block">
     <div class="block-label">薄弱知识点（${weak.length}）</div>
-    ${weak.length ? meTable(weak, false) : `<div class="hint">${firstLoad ? "正在读取学习账本…" : "还没有薄弱项 —— 先去学习页做几道题，答错的会自动进这张表。"}</div>`}
+    ${weak.length ? kcList(weak, false) : `<div class="hint">${firstLoad ? "正在读取学习账本…" : "还没有薄弱项 —— 先去学习页做几道题，答错的会自动进这张表。"}</div>`}
   </section>`;
 
   html += `<section class="me-block">
     <div class="block-label">今日复习队列（${due.length}）</div>
-    ${due.length ? meTable(due, true) : `<div class="hint">${firstLoad ? "正在读取学习账本…" : "今日没有到期的复习。"}</div>`}
+    ${due.length ? kcList(due, true) : `<div class="hint">${firstLoad ? "正在读取学习账本…" : "今日没有到期的复习。"}</div>`}
   </section>`;
 
   // 学习计划：append-only 任务清单，可在任一设备添加，账号域内共享
@@ -724,6 +1002,30 @@ async function runPlanDone(taskId, done) {
     state.me.error = "更新任务失败：" + readableErr(e);
     refreshMe();
   }
+}
+
+/** 知识点列表：桌面用表格，手机竖屏用卡片（不横向滚动） */
+function kcList(rows, withAction) {
+  if (!isPhone()) return meTable(rows, withAction);
+  return `<div class="kc-cards">${rows
+    .map((k) => {
+      const m = Math.max(0, Math.min(100, Math.round((Number(k.mastery) || 0) * 100)));
+      return `<div class="kc-card-row">
+        <div class="kc-card-top">
+          <div class="kc-card-txt">
+            <div class="kc-card-name">${esc(k.kc_name || k.kc_id || "")}</div>
+            <div class="kc-card-sub mono">${esc(k.pack || "")} · 对/错 ${esc(String(k.correct ?? 0))}/${esc(String(k.wrong ?? 0))} · 连对 ${esc(String(k.streak ?? 0))}</div>
+          </div>
+          <div class="kc-card-pct">${esc(pct(k.mastery))}</div>
+        </div>
+        <div class="kc-card-meter"><span style="width:${m}%"></span></div>
+        <div class="kc-card-foot">
+          <span class="mono muted">${esc(dueLabel(k.due_ts, k.mastered))}</span>
+          ${withAction ? `<button class="btn me-go" data-pack="${esc(k.pack || "")}" data-kc="${esc(k.kc_id || "")}">开始复习</button>` : ""}
+        </div>
+      </div>`;
+    })
+    .join("")}</div>`;
 }
 
 function meTable(rows, withAction) {
@@ -879,7 +1181,26 @@ function renderSettings(view) {
         <span class="mono muted" id="s-status"></span>
       </div>
       <p class="settings-note mono">配置文件：${esc(state.configPath || "")}</p>
-      <p class="settings-note muted">提示：NVIDIA NIM 的 Base URL 为 <code>https://integrate.api.nvidia.com/v1</code>，实测可用模型如 <code>deepseek-ai/deepseek-v4.1-flash</code>、<code>nvidia/nemotron-3-super-120b-a12b</code>（清单以 <code>GET /v1/models</code> 为准）。</p>
+
+      <h2 class="settings-h2">学科包</h2>
+      <div class="field">
+        <label>学科包目录（packs）</label>
+        <input id="s-packs-dir" type="text" value="${esc(packsDirValue())}" spellcheck="false" />
+      </div>
+      <div class="actions">
+        <button class="btn btn-ghost" id="s-refresh">重新扫描学科包</button>
+        <span class="mono muted" id="s-packs-status"></span>
+      </div>
+
+      <h2 class="settings-h2">教师视图</h2>
+      <p class="settings-note muted">内容编排与校验（学生用不到，手机上也从这里进）</p>
+      <div class="settings-links">
+        <button class="btn btn-ghost" data-goto="items">题目清单</button>
+        <button class="btn btn-ghost" data-goto="tree">知识树</button>
+        <button class="btn btn-ghost" data-goto="report">校验报告</button>
+      </div>
+
+      <p class="settings-note muted">提示：NVIDIA NIM 的 Base URL 为 <code>https://integrate.api.nvidia.com/v1</code>，实测可用模型如 <code>deepseek-ai/deepseek-v4.1-flash</code>；本机也可走 magpie 网关 <code>http://127.0.0.1:3425/v1</code> + <code>auto/deepseek-v4.1-flash</code>（更快）。</p>
     </div>`;
 
   const provSel = view.querySelector("#s-provider");
@@ -914,6 +1235,35 @@ function renderSettings(view) {
     }
   };
   window.__settingsBind = true;
+
+  // 学科包目录：手机上这是唯一的入口（顶栏不显示路径框）
+  const packsIn = view.querySelector("#s-packs-dir");
+  const packsBtn = view.querySelector("#s-refresh");
+  if (packsBtn)
+    packsBtn.onclick = async () => {
+      const dir = (packsIn && packsIn.value.trim()) || "";
+      try {
+        localStorage.setItem("packsDir", dir);
+        const header = document.getElementById("packs-dir");
+        if (header) header.value = dir;
+        const st = view.querySelector("#s-packs-status");
+        if (st) st.textContent = "扫描中…";
+        await refreshPacks();
+        if (state.packs.length) await openPack(state.packs[0].path);
+        if (st) st.textContent = `已找到 ${state.packs.length} 个学科包`;
+      } catch (e) {
+        const st = view.querySelector("#s-packs-status");
+        if (st) st.textContent = "扫描失败: " + readableErr(e);
+      }
+    };
+
+  // 教师视图入口
+  view.querySelectorAll("[data-goto]").forEach((b) => {
+    b.onclick = () => {
+      if (!state.current) { view.querySelector("#s-packs-status").textContent = "请先在「学习」里选择学科包"; return; }
+      setTab(b.dataset.goto);
+    };
+  });
 }
 
 /* ══════════ 题目 / 知识树 / 报告（沿用） ══════════ */

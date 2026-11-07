@@ -2,15 +2,25 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#f7f6f3" />
   <title>WORDO 学习系统</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header>
-    <div>
+    <div class="brand-wrap">
       <span class="brand">WORDO</span><span class="brand-sub">学习系统 / v0.1</span>
     </div>
+
+    <!-- 手机端：当前学科入口（点击弹出学科选择） -->
+    <button id="subject-btn" class="subject-btn" aria-label="切换学科">
+      <span class="subject-btn-label">学科</span>
+      <span id="subject-name">—</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+
+    <!-- 桌面端：packs 目录与刷新（手机端隐藏，移到设置页） -->
     <div class="packs-dir">
       <label>packs/</label>
       <input id="packs-dir" type="text" spellcheck="false" />
@@ -20,14 +30,15 @@
   </header>
 
   <main>
-    <aside>
+    <aside id="sidebar">
       <h2>学科包</h2>
       <div id="pack-list"></div>
     </aside>
 
     <section id="content">
       <nav id="tabs" class="hidden">
-        <button class="tab active" data-tab="learn">学习</button>
+        <button class="tab active" data-tab="home">首页</button>
+        <button class="tab" data-tab="learn">学习</button>
         <button class="tab" data-tab="me">我的</button>
         <button class="tab" data-tab="items">题目</button>
         <button class="tab" data-tab="tree">知识树</button>
@@ -36,6 +47,37 @@
       <div id="view"></div>
     </section>
   </main>
+
+  <!-- 手机端底部导航 -->
+  <nav id="tabbar" class="tabbar" aria-label="主导航">
+    <button class="tabbar-btn active" data-tab="home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 8 4 4-4 4"/><path d="M13 16h6"/></svg>
+      <span>首页</span>
+    </button>
+    <button class="tabbar-btn" data-tab="learn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20v3H6.5A2.5 2.5 0 0 1 4 20.5z"/></svg>
+      <span>学习</span>
+    </button>
+    <button class="tabbar-btn" data-tab="me">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+      <span>我的</span>
+    </button>
+    <button class="tabbar-btn" data-tab="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3.05V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.24.6.82 1 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
+      <span>设置</span>
+    </button>
+  </nav>
+
+  <!-- 学科选择浮层（手机端） -->
+  <div id="subject-sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="选择学科">
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <b>选择学科</b>
+        <button id="sheet-close" class="btn btn-ghost">关闭</button>
+      </div>
+      <div id="subject-sheet-list"></div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

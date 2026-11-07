@@ -20,6 +20,8 @@ const VIEWPORTS = [
   { name: "wide", width: 1920, height: 1080 },
   { name: "tab", width: 1024, height: 768 },
   { name: "phone", width: 390, height: 844, mobile: true },
+  { name: "phone-s", width: 360, height: 740, mobile: true },
+  { name: "phone-land", width: 844, height: 390, mobile: true, landscape: true },
 ];
 
 // 点击并记录「是否被别的元素遮挡」——遮挡是真实可用性缺陷，必须捞出来
@@ -55,6 +57,7 @@ async function waitMeReady(page) {
 }
 
 const TABS = [
+  { key: "home", label: "首页" },
   { key: "learn", label: "学习" },
   { key: "me", label: "我的" },
   { key: "items", label: "题目" },
@@ -129,15 +132,16 @@ try {
     const vres = { tabs: {}, occlusions: [] };
 
     for (const t of TABS) {
-      // 点页签（设置按钮在 header 里，不在 tabs 里）
-      if (t.key === "settings") {
-        const r = await tap(page, "#btn-settings", vres.occlusions);
-        if (!r.found) { vres.tabs[t.key] = { skipped: "设置按钮不存在" }; continue; }
-      } else {
-        const sel = `.tab[data-tab="${t.key}"]`;
-        const r = await tap(page, sel, vres.occlusions);
-        if (!r.found) { vres.tabs[t.key] = { skipped: "页签不存在" }; continue; }
-      }
+      // 手机端优先点底部导航；桌面点顶部页签；设置按钮在 header
+      const barSel = `.tabbar-btn[data-tab="${t.key}"]`;
+      const tabSel = `.tab[data-tab="${t.key}"]`;
+      let picked = null;
+      if (await page.locator(barSel).isVisible().catch(() => false)) picked = barSel;
+      else if (await page.locator(tabSel).isVisible().catch(() => false)) picked = tabSel;
+      else if (t.key === "settings") picked = "#btn-settings";
+      if (!picked) { vres.tabs[t.key] = { skipped: "入口不可见" }; continue; }
+      const r = await tap(page, picked, vres.occlusions);
+      if (!r.found) { vres.tabs[t.key] = { skipped: "入口不存在" }; continue; }
       await page.waitForTimeout(500);
       if (t.key === "me") await waitMeReady(page);
       const m = await measure(page);
@@ -149,7 +153,10 @@ try {
 
     // 交互：学习页点第一个练习选项 → 检查记账结果行出现
     try {
-      await tap(page, '.tab[data-tab="learn"]', vres.occlusions);
+      const backSel = (await page.locator('.tabbar-btn[data-tab="learn"]').isVisible().catch(() => false))
+        ? '.tabbar-btn[data-tab="learn"]'
+        : '.tab[data-tab="learn"]';
+      await tap(page, backSel, vres.occlusions);
       await page.waitForTimeout(400);
       const hasOpt = await page.locator(".q-card .q-opt[data-correct]").count();
       if (hasOpt) {

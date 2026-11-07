@@ -1,25 +1,25 @@
 {
-  "startedAt": "2026-11-07T12:18:52.509Z",
-  "aiRenderMs": 13225,
+  "startedAt": "2026-11-07T12:36:26.284Z",
+  "aiRenderMs": 18249,
   "render": {
     "hasCard": true,
     "label": "AI 讲解 · auto/deepseek-v4.1-flash · 尝试 1 次",
     "h3": [
       "直观理解",
       "规范表述",
-      "判据（针对你最近的 concept_confused）",
+      "一条判据（专治你的易错点）",
       "例题",
       "常见误解"
     ],
-    "followupLen": 90,
-    "followup": "检测题 | My father ___ the car last Sunday. | A | A washes | B | B washed | C | C has washed | D | D is washing",
+    "followupLen": 95,
+    "followup": "检测题 | They ___ the museum three days ago. | A | A have visited | B | B visited | C | C visit | D | D are visiting",
     "toolHint": "建议教具：timeline",
-    "textLen": 770,
+    "textLen": 1094,
     "errorText": null
   },
   "classify": {
     "ok": true,
-    "text": "错因分析 · auto/deepseek-v4.1-flash | 类型 | 概念混淆 | 根因知识点 | 一般过去时 | 建议动作 | 拆解概念 | 置信度 | 0.85 | 句中有明确过去时间状语 last Sunday，却仍用一般现在时 washes，是把「一般现在时」与「一般过去时」的时间轴混为一谈（该生一般过去时已连续两次 concept_confused，需对比辨析而非重复讲解）。"
+    "text": "错因分析 · auto/deepseek-v4.1-flash | 类型 | 概念混淆 | 根因知识点 | 一般过去时 | 建议动作 | 拆解概念 | 置信度 | 0.88 | 句中 three days ago 是明确的过去时间点，谓语必须用一般过去时 visited；选 A have visited 是把「过去发生」误当成「现在完成时」，与历史错题 it_eng_0001（两次同选 A）犯了同一类混淆，因此需要对“一般过去时 vs 现在完成时”做一次辨析训练。"
   },
   "classifyWaited": true,
   "consoleErrors": []

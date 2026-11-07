@@ -17,9 +17,28 @@ p.on("console", (m) => { if (m.type() === "error") errs.push("console: " + m.tex
 const R = {};
 await p.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "networkidle" });
 await p.waitForSelector(".pack-btn");
-await p.evaluate(() => document.querySelector(".pack-btn").click());
-await p.waitForTimeout(700);
-await p.evaluate(() => document.querySelector('.tab[data-tab="me"]').click());
+await p.waitForTimeout(1200);
+
+// 0) 首页控制台：编号动作与命令
+R.home = await p.evaluate(() => ({
+  isHome: !!document.querySelector(".console-title"),
+  title: document.querySelector(".console-title")?.textContent?.trim().slice(0, 40),
+  cmds: [...document.querySelectorAll(".cmd-name")].map((x) => x.textContent.trim()),
+  sideBlocks: [...document.querySelectorAll(".side-label")].map((x) => x.textContent.trim()),
+}));
+// 数字键快捷键：按 4 = 看看我的账本
+await p.keyboard.press("4");
+await p.waitForTimeout(800);
+R.homeKey4 = await p.evaluate(() => ({ tab: document.body.dataset.tab, isMe: !!document.querySelector(".me-head") }));
+// /讲解 一般过去时
+await p.evaluate(() => document.querySelector('.tabbar-btn[data-tab="home"], .tab[data-tab="home"]').click());
+await p.waitForTimeout(600);
+await p.fill("#home-input", "/讲解 一般过去时");
+await p.press("#home-input", "Enter");
+await p.waitForTimeout(1500);
+R.homeCmdExplain = await p.evaluate(() => ({ tab: document.body.dataset.tab, lesson: document.querySelector(".lesson-head h1")?.textContent?.trim() || "", loading: !!document.querySelector(".skeleton") }));
+
+await p.evaluate(() => document.querySelector('.tab[data-tab="me"], .tabbar-btn[data-tab="me"]').click());
 await p.waitForFunction(() => document.querySelectorAll(".me-stat").length > 0 && document.querySelector(".me-stat .n")?.textContent.trim() !== "…", { timeout: 15000 });
 await p.waitForTimeout(400);
 
