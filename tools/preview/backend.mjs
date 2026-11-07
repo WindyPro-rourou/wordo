@@ -541,73 +541,112 @@ function checkOutput(task, v, kcIds) {
   return e;
 }
 
-/* ══════════ 会话（chat-first） ══════════ */
+/* ══════════ 会话（chat-first）：事件化存储，避免整文件覆盖丢消息 ══════════ */
 
-const chatsDir = (d) => path.join(domainRoot(d), "chats");
-const chatPath = (d, id) => path.join(chatsDir(d), `${id}.json`);
-const safeId = (id) => !!id && id.length <= 64 && /^[A-Za-z0-9_-]+$/.test(id);
+const chatsRoot = (d) => path.join(domainRoot(d), "chats");
+const chatDir = (d, id) => path.join(chatsRoot(d), id);
+const safeId = (id) => !!id && id.length <= 80 && /^[A-Za-z0-9_-]+$/.test(id);
+const newMsgId = (node) => `m${Date.now()}-${node}`;
+
+function readChatEvents(dir) {
+  const seen = new Set(), out = [];
+  if (!exists(dir)) return out;
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".jsonl")).sort()) {
+    for (const line of fs.readFileSync(path.join(dir, f), "utf8").split(/\r?\n/)) {
+      const s = line.trim(); if (!s) continue;
+      try { const m = JSON.parse(s); if (!seen.has(m.id)) { seen.add(m.id); out.push(m); } } catch {}
+    }
+  }
+  // 按「解析后的时间」排序（跨时区偏移时字符串序 != 时间序）
+  out.sort((a, b) => (Date.parse(a.ts) || 0) - (Date.parse(b.ts) || 0) || String(a.id).localeCompare(String(b.id)));
+  return out;
+}
+const chatDeleted = (dir) => readChatEvents(dir).some((m) => m.kind === "__deleted");
+
+function chatTitleOf(evs) {
+  const rn = evs.filter((m) => m.kind === "__rename").pop();
+  if (rn) return rn.text;
+  const u = evs.find((m) => m.role === "user");
+  return u ? [...String(u.text)].slice(0, 24).join("") : "";
+}
 
 export function chatList(domain) {
-  const dir = chatsDir(domain);
-  if (!exists(dir)) return { chats: [] };
-  const list = [];
-  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".json"))) {
-    try {
-      const c = readJson(path.join(dir, f));
-      const lastUser = [...(c.messages || [])].reverse().find((m) => m.role === "user");
-      list.push({ id: c.id, title: (c.title || "").trim() || (lastUser ? lastUser.text : ""), updated: c.updated, pack: c.pack || "", count: (c.messages || []).length });
-    } catch {}
+  const root = chatsRoot(domain);
+  const out = [];
+  if (!exists(root)) return { chats: [] };
+  for (const id of fs.readdirSync(root)) {
+    const dir = chatDir(domain, id);
+    if (!exists(dir) || !fs.statSync(dir).isDirectory()) continue;
+    if (!safeId(id) || chatDeleted(dir)) continue;
+    const evs = readChatEvents(dir);
+    if (!evs.length) continue;
+    const pack = [...evs].reverse().map((m) => m.pack || "").find((p) => p) || "";
+    out.push({ id, title: chatTitleOf(evs), updated: evs[evs.length - 1].ts, pack, count: evs.filter((m) => m.kind !== "__rename" && m.kind !== "__deleted").length });
   }
-  list.sort((a, b) => String(b.updated).localeCompare(String(a.updated)));
-  return { chats: list };
+  out.sort((a, b) => String(b.updated).localeCompare(String(a.updated)));
+  return { chats: out };
 }
 
 export function chatGet(domain, id) {
   if (!safeId(id)) throw new Error("非法会话 id");
-  const p = chatPath(domain, id);
-  if (!exists(p)) throw new Error(`找不到会话 ${id}`);
-  return readJson(p);
+  const dir = chatDir(domain, id);
+  if (!exists(dir)) throw new Error(`找不到会话 ${id}`);
+  const evs = readChatEvents(dir);
+  const messages = evs.filter((m) => m.kind !== "__rename" && m.kind !== "__deleted")
+    .map((m) => ({ id: m.id, role: m.role, kind: m.kind, text: m.text, ts: m.ts, data: m.data ?? null, pack: m.pack || "", node: m.node || "" }));
+  const metaPath = path.join(dir, "meta.json");
+  const created = exists(metaPath) ? (readJson(metaPath).created || "") : "";
+  const pack = [...evs].reverse().map((m) => m.pack || "").find((p) => p) || "";
+  return { id, title: chatTitleOf(evs), pack, created, messages };
 }
 
 export function chatNew(domain, title) {
-  ensureDir(chatsDir(domain));
-  const c = { id: `c${Date.now()}`, title: (title || "").trim(), created: nowIso(), updated: nowIso(), pack: "", messages: [] };
-  fs.writeFileSync(chatPath(domain, c.id), JSON.stringify(c, null, 2), "utf8");
-  return c;
+  const node = nodeId(domain);
+  const id = `c${Date.now()}-${node}`;
+  const dir = chatDir(domain, id);
+  ensureDir(dir);
+  fs.writeFileSync(path.join(dir, "meta.json"), JSON.stringify({ id, created: nowIso() }));
+  if (String(title || "").trim()) appendChatLine(dir, node, { role: "system", kind: "__rename", text: String(title).trim() });
+  return chatGet(domain, id);
+}
+
+function appendChatLine(dir, node, msg) {
+  ensureDir(dir);
+  const m = { id: newMsgId(node), ts: nowIso(), role: "user", kind: "text", text: "", data: null, pack: "", node, ...msg };
+  fs.appendFileSync(path.join(dir, `${node}.jsonl`), JSON.stringify(m) + "\n");
+  return m;
 }
 
 export function chatAppend(domain, id, msg = {}) {
-  ensureDir(chatsDir(domain));
-  let c;
-  if (safeId(id) && exists(chatPath(domain, id))) c = readJson(chatPath(domain, id));
-  else c = { id: safeId(id) ? id : `c${Date.now()}`, title: "", created: nowIso(), updated: nowIso(), pack: "", messages: [] };
-  const m = { role: msg.role || "user", kind: msg.kind || "text", text: msg.text || "", ts: nowIso(), data: msg.data ?? null, pack: msg.pack || "" };
-  if (m.pack) c.pack = m.pack;
-  (c.messages = c.messages || []).push(m);
-  if (!String(c.title).trim() && m.role === "user" && m.text.trim()) c.title = [...m.text].slice(0, 24).join("");
-  c.updated = nowIso();
-  fs.writeFileSync(chatPath(domain, c.id), JSON.stringify(c, null, 2), "utf8");
-  return c;
+  const node = nodeId(domain);
+  const cid = safeId(id) ? id : `c${Date.now()}-${node}`;
+  const dir = chatDir(domain, cid);
+  if (!exists(dir)) {
+    ensureDir(dir);
+    fs.writeFileSync(path.join(dir, "meta.json"), JSON.stringify({ id: cid, created: nowIso() }));
+  }
+  appendChatLine(dir, node, msg);
+  return chatGet(domain, cid);
 }
 
 export function chatRename(domain, id, title) {
-  const c = chatGet(domain, id);
-  c.title = [...String(title || "").trim()].slice(0, 60).join("");
-  c.updated = nowIso();
-  fs.writeFileSync(chatPath(domain, id), JSON.stringify(c, null, 2), "utf8");
-  return { renamed: true, id, title: c.title };
+  if (!safeId(id)) throw new Error("非法会话 id");
+  const dir = chatDir(domain, id);
+  if (!exists(dir)) throw new Error(`找不到会话 ${id}`);
+  appendChatLine(dir, nodeId(domain), { role: "system", kind: "__rename", text: String(title || "").trim() });
+  return chatGet(domain, id);
 }
 
 export function chatDelete(domain, id) {
   if (!safeId(id)) throw new Error("非法会话 id");
-  const p = chatPath(domain, id);
-  if (exists(p)) fs.unlinkSync(p);
+  const dir = chatDir(domain, id);
+  if (exists(dir)) appendChatLine(dir, nodeId(domain), { role: "system", kind: "__deleted", text: "" });
   return { deleted: true, id };
 }
 
 /** 从一句话判定学科：知识点名命中(5) > 学科名(3) > id(2) > 学科简称(1) */
 export function detectSubject(domain, text, packsDir) {
-  const t = String(text || "").toLowerCase();
+  const tt = String(text || "").toLowerCase();
   const dir = packsDir || state.packsDir;
   let best = { pack: "", name: "", why: "", score: 0 };
   if (!exists(dir)) return best;
@@ -620,16 +659,16 @@ export function detectSubject(domain, text, packsDir) {
     let score = 0, why = "";
     try {
       for (const kc of readJson(path.join(p, "tree", "kc.json"))) {
-        if (kc.name && [...kc.name].length >= 2 && t.includes(String(kc.name).toLowerCase())) {
+        if (kc.name && [...kc.name].length >= 2 && tt.includes(String(kc.name).toLowerCase())) {
           score += 5;
           if (!why) why = `命中知识点「${kc.name}」`;
         }
       }
     } catch {}
-    if (nm && t.includes(nm.toLowerCase())) { score += 3; if (!why) why = `提到学科「${nm}」`; }
+    if (nm && tt.includes(nm.toLowerCase())) { score += 3; if (!why) why = `提到学科「${nm}」`; }
     const short = nm.replace("高中", "").replace("初中", "");
-    if (short && t.includes(short.toLowerCase())) { score += 1; if (!why) why = `提到「${short}」`; }
-    if (t.includes(name.toLowerCase())) score += 2;
+    if (short && tt.includes(short.toLowerCase())) score += 1;
+    if (tt.includes(name.toLowerCase())) score += 2;
     if (score > best.score) best = { pack: name, name: nm || name, why, score };
   }
   return best;
@@ -699,6 +738,26 @@ export async function invoke(name, args = {}) {
       writeUserMd(domain, packsDir);
       return { processed, pending_before: pending.length };
     }
+    case "record_judged": {
+      const node = nodeId(domain);
+      const ev = {
+        id: `${Date.now()}-0-${node}`, ts: nowIso(), node, kind: "answer",
+        pack: args.pack || "", item_id: args.syntheticId || "", kc_ids: args.kcId ? [args.kcId] : [],
+        answered: args.answered || "", correct: args.ok ? "(judged-correct)" : "(judged-wrong)",
+        ok: !!args.ok, source: args.source || "followup", error_type: args.errorType || null,
+      };
+      appendEvent(domain, ev);
+      try { writeUserMd(domain, packsDir); } catch {}
+      const st = derive(domain);
+      const kc = args.kcId ? st.kcs.get(args.kcId) || null : null;
+      return { ok: !!args.ok, eventId: ev.id, kc, nextDue: kc ? kc.due_ts : null };
+    }
+    case "record_explain": {
+      const node = nodeId(domain);
+      const ev = { id: `${Date.now()}-0-${node}`, ts: nowIso(), node, kind: "explain", pack: args.pack || "", kc_ids: args.kcId ? [args.kcId] : [], model: args.model || "", source: args.source || "ai" };
+      appendEvent(domain, ev);
+      return { ok: true, eventId: ev.id };
+    }
     case "chat_list": return chatList(domain);
     case "chat_get": return chatGet(domain, args.id);
     case "chat_new": return chatNew(domain, args.title);
@@ -716,10 +775,11 @@ export async function invoke(name, args = {}) {
       }
       if (args.action === "done") { appendEvent(domain, { id: `${Date.now()}-0-${me}`, ts: nowIso(), node: me, kind: "plan_done", task_id: args.taskId || "" }); return { done: args.taskId }; }
       const done = new Set(readEvents(domain).filter((e) => e.kind === "plan_done").map((e) => e.task_id));
-      const list = [];
-      for (const line of (exists(path.join(d, "plan.md")) ? fs.readFileSync(path.join(d, "plan.md"), "utf8") : "").split(/\r?\n/)) {
-        const m = line.match(/^- \[ \] (\S+) · (.*)$/); if (!m) continue;
-        list.push({ id: m[1], text: m[2], done: done.has(m[1]) });
+      const seen = new Set(); const list = [];
+      for (const ev of readEvents(domain).filter((e) => e.kind === "plan_add")) {
+        if (!ev.task_id || seen.has(ev.task_id)) continue;
+        seen.add(ev.task_id);
+        list.push({ id: ev.task_id, text: ev.note || "", done: done.has(ev.task_id), by: ev.node });
       }
       return { plan: list };
     }

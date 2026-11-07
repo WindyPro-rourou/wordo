@@ -235,7 +235,12 @@ pub fn read_events(root: &Path) -> Vec<Event> {
             }
         }
     }
-    out.sort_by(|a, b| a.ts.cmp(&b.ts));
+    // 按「解析后的时间」排序：RFC3339 字符串在不同时区偏移下字典序≠时间序
+    out.sort_by(|a, b| {
+        let ta = parse_ts(&a.ts).map(|x| x.timestamp_millis()).unwrap_or(0);
+        let tb = parse_ts(&b.ts).map(|x| x.timestamp_millis()).unwrap_or(0);
+        ta.cmp(&tb).then(a.id.cmp(&b.id))
+    });
     out
 }
 
@@ -370,7 +375,7 @@ pub fn due_list(st: &LearnerState, now: Option<DateTime<FixedOffset>>) -> Vec<Kc
     let mut v: Vec<KcState> = st
         .kcs
         .values()
-        .filter(|k| k.attempts > 0 && !k.mastered)
+        .filter(|k| k.attempts > 0)
         .filter(|k| match k.due_ts.as_deref().and_then(parse_ts) {
             Some(d) => d <= now,
             None => false,
@@ -939,28 +944,21 @@ pub fn plan_add(root: &Path, node: &str, text: &str) -> Result<String, String> {
     Ok(id)
 }
 
+/// 计划列表：**从账本事件派生**（唯一事实），不读共享 plan.md——多设备并发写 plan.md 会互相覆盖。
 pub fn plan_list(root: &Path) -> Vec<Value> {
-    let p = ensure_domain(root).unwrap_or(Paths::new(root));
     let events = read_events(root);
     let done: HashSet<String> = events
         .iter()
         .filter(|e| e.kind == "plan_done")
         .map(|e| e.task_id.clone())
         .collect();
-    let mut out = Vec::new();
-    if let Ok(t) = fs::read_to_string(p.plan_md()) {
-        for line in t.lines() {
-            let l = line.trim();
-            if let Some(rest) = l.strip_prefix("- [ ] ") {
-                let mut parts = rest.splitn(2, " · ");
-                let id = parts.next().unwrap_or("").trim().to_string();
-                let desc = parts.next().unwrap_or("").split("　<!--").next().unwrap_or("").trim().to_string();
-                if id.is_empty() {
-                    continue;
-                }
-                out.push(json!({ "id": id, "text": desc, "done": done.contains(&id) }));
-            }
+    let mut out: Vec<Value> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for e in events.iter().filter(|e| e.kind == "plan_add") {
+        if e.task_id.is_empty() || !seen.insert(e.task_id.clone()) {
+            continue;
         }
+        out.push(json!({ "id": e.task_id, "text": e.note, "done": done.contains(&e.task_id), "by": e.node }));
     }
     out
 }
@@ -1018,4 +1016,53 @@ pub fn record_answer(
         next_due: kc_state.as_ref().and_then(|k| k.due_ts.clone()),
         kc_state,
     })
+}
+
+
+/* ══════════ 判分即落账（讲解内检测题 / 学习页 followup 也走这里） ══════════ */
+
+/// 记一次「无题库 item」的作答（讲解里的检测题）。
+/// `synthetic_id` 例如 `english.high::kc_eng_0002::followup`，用来去重与追溯。
+pub fn record_judged(
+    root: &Path,
+    packs_dir: &Path,
+    node: &str,
+    pack: &str,
+    kc_id: &str,
+    synthetic_id: &str,
+    answered: &str,
+    ok: bool,
+    source: &str,
+    error_type: Option<String>,
+) -> Result<Value, String> {
+    let mut ev = Event::new(node, "answer");
+    ev.pack = pack.to_string();
+    ev.item_id = synthetic_id.to_string();
+    ev.kc_ids = if kc_id.is_empty() { vec![] } else { vec![kc_id.to_string()] };
+    ev.answered = answered.to_string();
+    ev.correct = if ok { "(judged-correct)".to_string() } else { "(judged-wrong)".to_string() };
+    ev.ok = Some(ok);
+    ev.source = source.to_string();
+    ev.error_type = error_type;
+    append_event(root, &ev)?;
+    let _ = write_user_md(root, packs_dir);
+    let st = derive(root, None);
+    let kc = if kc_id.is_empty() { None } else { st.kcs.get(kc_id).cloned() };
+    Ok(json!({
+        "ok": ok,
+        "eventId": ev.id,
+        "kc": kc,
+        "nextDue": kc.as_ref().and_then(|k| k.due_ts.clone()),
+    }))
+}
+
+/// 记录「展示了某知识点的讲解」（A3 留痕；也让 user.md 能看到讲过什么）
+pub fn record_explain(root: &Path, node: &str, pack: &str, kc_id: &str, model: &str, source: &str) -> Result<Value, String> {
+    let mut ev = Event::new(node, "explain");
+    ev.pack = pack.to_string();
+    ev.kc_ids = if kc_id.is_empty() { vec![] } else { vec![kc_id.to_string()] };
+    ev.model = model.to_string();
+    ev.source = source.to_string();
+    append_event(root, &ev)?;
+    Ok(json!({ "ok": true, "eventId": ev.id }))
 }

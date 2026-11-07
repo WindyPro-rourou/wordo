@@ -13,6 +13,11 @@
       <span class="brand">WORDO</span><span class="brand-sub">学习系统 / v0.1</span>
     </div>
 
+    <!-- 手机端：对话列表抽屉入口 -->
+    <button id="btn-chats" class="icon-btn" aria-label="对话列表">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+    </button>
+
     <!-- 手机端：当前学科入口（点击弹出学科选择） -->
     <button id="subject-btn" class="subject-btn" aria-label="切换学科">
       <span class="subject-btn-label">学科</span>
@@ -44,7 +49,7 @@
     <section id="content">
       <nav id="tabs" class="hidden">
         <button class="tab active" data-tab="chat">对话</button>
-        <button class="tab" data-tab="me">我的</button>
+        <button class="tab" data-tab="me">进度</button>
         <button class="tab" data-tab="settings">设置</button>
       </nav>
       <div id="view"></div>
@@ -59,7 +64,7 @@
     </button>
     <button class="tabbar-btn" data-tab="me">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
-      <span>我的</span>
+      <span>进度</span>
     </button>
     <button class="tabbar-btn" data-tab="settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3.05V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.24.6.82 1 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
@@ -75,6 +80,19 @@
         <button id="sheet-close" class="btn btn-ghost">关闭</button>
       </div>
       <div id="subject-sheet-list"></div>
+    </div>
+  </div>
+
+  <!-- 手机端：对话列表抽屉 -->
+  <div id="chat-drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-label="对话列表">
+    <div class="drawer-panel">
+      <div class="drawer-head"><b>对话</b><button id="drawer-close" class="btn btn-ghost">关闭</button></div>
+      <button id="drawer-new" class="btn new-chat">＋ 新建对话</button>
+      <div id="drawer-list" class="drawer-list"></div>
+      <div class="drawer-foot">
+        <button class="side-link" data-tab="me">进度</button>
+        <button class="side-link" data-tab="settings">设置</button>
+      </div>
     </div>
   </div>
 

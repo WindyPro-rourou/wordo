@@ -45,6 +45,9 @@ const node = "demo-pc-a1b2";
 fs.writeFileSync(path.join(DOMAIN, "node.json"), JSON.stringify({ node, host: "demo-pc", created: iso(daysAgo(6)) }, null, 2));
 
 const evs = [];
+// 计划任务也写进账本（plan.md 已降级为派生视图，不再作为事实源）
+evs.push({ id: `p1-${node}`, ts: iso(daysAgo(3)), node, kind: "plan_add", task_id: "t1", note: "三天内把「一般过去时」练到掌握" });
+evs.push({ id: `p2-${node}`, ts: iso(daysAgo(2)), node, kind: "plan_add", task_id: "t2", note: "整理定语从句的关系词选择判据" });
 let seq = 0;
 const push = (ts, item, answered, ok, extra = {}) => {
   evs.push({ id: `${new Date(ts).getTime()}-${seq++}-${node}`, ts: iso(ts), node, kind: "answer", pack: item.pack, item_id: item.id, kc_ids: item.kc_ids, answered, correct: item.answer, ok, source: extra.source || "quiz", ...(extra.error_type ? { error_type: extra.error_type } : {}) });
@@ -89,5 +92,5 @@ if (one) {
 console.log(`已生成演示域: ${DOMAIN}`);
 console.log(`  事件 ${evs.length} 条 · 节点 ${node}`);
 const kcCount = {};
-evs.forEach((e) => e.kc_ids.forEach((k) => (kcCount[k] = (kcCount[k] || 0) + 1)));
+evs.forEach((e) => (e.kc_ids || []).forEach((k) => (kcCount[k] = (kcCount[k] || 0) + 1)));
 console.log("  各知识点作答次数:", kcCount);

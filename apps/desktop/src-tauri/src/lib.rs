@@ -152,6 +152,39 @@ fn detect_subject(domain: String, text: String, packs_dir: String) -> Result<Val
     api::detect_subject(&domain, &text, &packs_dir)
 }
 
+
+/* ══════════ 判分即落账 ══════════ */
+
+#[tauri::command]
+fn record_judged(
+    domain: String,
+    packs_dir: String,
+    pack: String,
+    kc_id: String,
+    synthetic_id: String,
+    answered: String,
+    ok: bool,
+    source: Option<String>,
+    error_type: Option<String>,
+) -> Result<Value, String> {
+    api::record_judged(
+        &domain,
+        &packs_dir,
+        &pack,
+        &kc_id,
+        &synthetic_id,
+        &answered,
+        ok,
+        source.as_deref().unwrap_or("followup"),
+        error_type.as_deref(),
+    )
+}
+
+#[tauri::command]
+fn record_explain(domain: String, pack: String, kc_id: String, model: String, source: Option<String>) -> Result<Value, String> {
+    api::record_explain(&domain, &pack, &kc_id, &model, source.as_deref().unwrap_or("ai"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -176,7 +209,9 @@ pub fn run() {
             chat_append,
             chat_rename,
             chat_delete,
-            detect_subject
+            detect_subject,
+            record_judged,
+            record_explain
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

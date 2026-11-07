@@ -107,11 +107,12 @@ pub fn ask_model(config_path: &Path, req: &Value) -> Result<Value, String> {
         return Err(format!("学科包目录不存在：{pack}"));
     }
     // 学习者状态注入（user.md）：模型据此做个性化，落实「重点复习我不会的」
+    // 注意：这里**只在内存里渲染**，不写盘 —— user.md 是派生物，避免多设备抢写同一文件
     if payload.get("_learner_md").is_none() {
-        if let Ok((content, _)) = learn::write_user_md(&domain, &packs_dir) {
-            if let Some(obj) = payload.as_object_mut() {
-                obj.insert("_learner_md".to_string(), Value::String(content));
-            }
+        let st = learn::derive(&domain, None);
+        let content = learn::render_user_md(&domain, &packs_dir, &st);
+        if let Some(obj) = payload.as_object_mut() {
+            obj.insert("_learner_md".to_string(), Value::String(content));
         }
     }
     let cfg = config::load(config_path);
@@ -220,8 +221,7 @@ pub fn learn_review(config_path: &Path, domain: &str, packs_dir: &str, limit: Op
     Ok(json!({ "processed": processed, "pending_before": pending.len() }))
 }
 
-pub fn learn_plan(domain: &str, action: &str, text: Option<&str>, task_id: Option<&str>) -> Result<Value, String> {
-    let d = resolve_domain(domain);
+pub fn learn_plan(domain: &str, action: &str, text: Option<&str>, task_id: Option<&str>) -> Result<Value, String> {    let d = resolve_domain(domain);
     let node = learn::node_id(&d)?;
     match action {
         "add" => Ok(json!({ "added": learn::plan_add(&d, &node, text.unwrap_or(""))? })),
@@ -274,4 +274,42 @@ pub fn detect_subject(domain: &str, text: &str, packs_dir: &str) -> Result<Value
     };
     let _ = domain;
     Ok(serde_json::json!({ "pack": pack, "name": name, "why": why, "score": score }))
+}
+
+/* ══════════ 判分即落账（讲解检测题 / 学习页 followup） ══════════ */
+
+/// 无题库 item 的判分（讲解里的检测题）：把结果写进账本，环路才闭合。
+pub fn record_judged(
+    domain: &str,
+    packs_dir: &str,
+    pack: &str,
+    kc_id: &str,
+    synthetic_id: &str,
+    answered: &str,
+    ok: bool,
+    source: &str,
+    error_type: Option<&str>,
+) -> Result<Value, String> {
+    let d = resolve_domain(domain);
+    let p = resolve_packs(packs_dir);
+    let node = learn::node_id(&d)?;
+    learn::record_judged(
+        &d,
+        &p,
+        &node,
+        pack,
+        kc_id,
+        synthetic_id,
+        answered,
+        ok,
+        source,
+        error_type.map(|s| s.to_string()),
+    )
+}
+
+/// 记录一次「讲解已展示」（A3 留痕）
+pub fn record_explain(domain: &str, pack: &str, kc_id: &str, model: &str, source: &str) -> Result<Value, String> {
+    let d = resolve_domain(domain);
+    let node = learn::node_id(&d)?;
+    learn::record_explain(&d, &node, pack, kc_id, model, source)
 }

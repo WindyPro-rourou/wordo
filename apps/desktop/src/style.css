@@ -805,3 +805,32 @@ header .subject-btn {
 header .subject-btn:hover { border-color: #111111; }
 header .subject-btn #subject-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
 header .subject-btn .subject-btn-label { font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+
+/* ══════════ 手机端：对话抽屉 ══════════ */
+.icon-btn { display: none; }
+@media (max-width: 900px) {
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; flex: 0 0 auto;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink);
+  }
+  .drawer { display: flex; position: fixed; inset: 0; z-index: 70; background: rgba(20, 20, 20, 0.3); }
+  .drawer.hidden { display: none; }
+  .drawer-panel {
+    width: 86%; max-width: 340px; height: 100%; background: var(--card);
+    padding: 16px 14px calc(18px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 10px;
+    animation: drawer-in 200ms var(--ease);
+  }
+  @keyframes drawer-in { from { transform: translateX(-14px); opacity: 0.7; } to { transform: none; opacity: 1; } }
+  .drawer-head { display: flex; justify-content: space-between; align-items: center; font-size: 16px; }
+  .drawer-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin: 0 -6px; padding: 0 6px; }
+  .drawer-item { display: flex; align-items: stretch; gap: 4px; border-radius: 8px; }
+  .drawer-item.active { background: #eceae5; }
+  .drawer-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px; border: none; background: transparent; border-radius: 8px; }
+  .drawer-item-t { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .drawer-item-m { font-size: 11px; color: var(--ink-2); }
+  .drawer-item-x { flex: 0 0 36px; border: none; background: transparent; color: var(--ink-2); font-size: 18px; border-radius: 8px; }
+  .drawer-item-x:active { background: #e3e1db; color: #9f2f2d; }
+  .drawer-foot { border-top: 1px solid var(--line); padding-top: 10px; display: flex; gap: 8px; }
+}

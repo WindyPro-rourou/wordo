@@ -1,0 +1,3 @@
+{"id":"1794056898164-0-zsg-0aa8","ts":"2026-11-07T21:08:18+08:00","node":"zsg-0aa8","kind":"answer","pack":"english.high","item_id":"english.high::kc_eng_0002::followup","kc_ids":["kc_eng_0002"],"answered":"A","correct":"(judged-wrong)","ok":false,"source":"chat-followup","error_type":"concept_confused"}
+{"id":"1794056898182-0-zsg-0aa8","ts":"2026-11-07T21:08:18+08:00","node":"zsg-0aa8","kind":"answer","pack":"english.high","item_id":"english.high::kc_eng_0002::followup","kc_ids":["kc_eng_0002"],"answered":"B","correct":"(judged-correct)","ok":true,"source":"chat-followup","error_type":null}
+{"id":"1794056898202-0-zsg-0aa8","ts":"2026-11-07T21:08:18+08:00","node":"zsg-0aa8","kind":"explain","pack":"english.high","kc_ids":["kc_eng_0002"],"model":"auto/x","source":"ai"}

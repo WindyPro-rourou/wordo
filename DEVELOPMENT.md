@@ -257,3 +257,21 @@ wordo learn-delegate / learn-review / learn-plan
 ### 已知待办
 - 教师视图（题库/知识树/校验报告）在手机上只能从设置进；是否要给学生隐藏 → 待定
 - 旧的 `renderHome` 代码保留未用（可后续删除）；Rust 侧仍未编译验证
+
+## M8 · 多模型评审驱动的数据层加固
+
+评审：glm-5.3F（网关直调）+ 仓库级只读评审（子智能体 deepseek）。共识与逐条处置见 `docs/评审/2026-11-07-多模型评审共识.md`。
+
+### 本轮修复（都是「静默数据损坏级」问题）
+1. **判分即落账（P1）**：新增 `learn::record_judged`（合成 id）+ `learn::record_explain`；API/Tauri/CLI/预览四端同构；讲解检测题、学习页 followup 全部改为判完即写账本。
+   实测：账本出现 `source=chat-followup`、`item_id=english.high::kc_eng_0002::followup`；界面「对/错 1/3 · 掌握度 37%」。
+2. **会话事件化（P2）**：`chats/<id>/<node>.jsonl` 每节点只追加 + `meta.json`；读时合并、按解析时间戳排序去重；删除写 `__deleted` 墓碑（不再被旧副本复活）；重命名 `__rename` 事件；会话 id 带节点后缀（跨设备不撞 id）。
+   实测：两节点合并 3 条消息顺序正确；删除后列表消失但文件保留可审计。
+3. **环路 bug**：`due_list` 不再永久排除已掌握（保持性复习）；`read_events` 改按解析时间排序（跨时区正确，Rust+JS）；`plan` 改为从账本 `plan_add/plan_done` 派生（plan.md 降级）；`ask_model` 不再每次重写 user.md（改内存渲染注入）。
+4. **移动端缺口（P5）**：新增「对话抽屉」（顶栏 ☰）——手机可新建/切换/删除会话，删除按钮常显 36px 可点；移动端 Enter 改为换行（避免误发），桌面 Enter 发送。
+
+### 验证
+- `shoot.mjs` round 22：6 视口 × 对话/进度/设置，issues = []
+- `interact.mjs`：自动判定/讲解/判分/新建会话/切回/计划/同步/导出/处理委托/教师视图 全绿，errors = []
+- `test-p1p2.mjs`：判分→账本、explain 事件、双节点合并、墓碑删除、重命名 全部通过
+- `test-ui-p1.mjs`：UI 点击检测题后账本确实新增 chat-followup 事件；手机抽屉 40px 入口、删除 36px 可见
