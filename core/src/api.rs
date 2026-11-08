@@ -19,11 +19,55 @@ pub fn resolve_domain(domain: &str) -> PathBuf {
 }
 
 pub fn resolve_packs(packs_dir: &str) -> PathBuf {
-    if packs_dir.trim().is_empty() {
-        PathBuf::from("packs")
-    } else {
-        PathBuf::from(packs_dir)
+    let raw = packs_dir.trim();
+    if !raw.is_empty() {
+        return PathBuf::from(raw);
     }
+    resolve_default_packs()
+}
+
+/// 解析默认学科包目录（不依赖任何硬编码机器路径）：
+/// 1) 环境变量 WORDO_PACKS；2) 可执行文件旁 packs/ 与 resources/packs/；
+/// 3) 相对当前目录的 packs / ../packs / ../../packs（覆盖 CLI 从仓库根、core/ 与
+///    `tauri dev` 从 apps/desktop 启动等情形）。找到含学科包的目录返回其绝对路径。
+fn dir_has_pack(dir: &Path) -> bool {
+    if let Ok(rd) = std::fs::read_dir(dir) {
+        for e in rd.flatten() {
+            if e.path().join("subject.json").is_file() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn resolve_default_packs() -> PathBuf {
+    if let Ok(p) = std::env::var("WORDO_PACKS") {
+        if !p.trim().is_empty() {
+            return PathBuf::from(p);
+        }
+    }
+    let mut cands: Vec<PathBuf> = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            cands.push(dir.join("packs"));
+            cands.push(dir.join("resources").join("packs"));
+        }
+    }
+    cands.push(PathBuf::from("packs"));
+    cands.push(PathBuf::from("../packs"));
+    cands.push(PathBuf::from("../../packs"));
+    for c in &cands {
+        if dir_has_pack(c) {
+            return std::fs::canonicalize(c).unwrap_or_else(|_| c.clone());
+        }
+    }
+    for c in &cands {
+        if c.is_dir() {
+            return std::fs::canonicalize(c).unwrap_or_else(|_| c.clone());
+        }
+    }
+    PathBuf::from("packs")
 }
 
 /// 把知识点状态补上人类可读名称与所属学科包
@@ -338,4 +382,128 @@ pub fn export_report(domain: &str, packs_dir: &str) -> Result<Value, String> {
     let d = resolve_domain(domain);
     let p = resolve_packs(packs_dir);
     learn::weekly_report(&d, &p)
+}
+
+/* ══════════ 新建学科（scaffold_pack）：落实「允许用户新建学科」 ══════════ */
+
+/// 与 validate.rs 的 id 规则一致：小写字母/数字开头，仅含小写字母、数字、点、连字符、下划线。
+fn valid_subject_id(id: &str) -> bool {
+    let mut chars = id.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_lowercase() || c.is_ascii_digit() => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '-' || c == '_')
+}
+
+fn guide_md(name: &str) -> String {
+    format!(
+        "# {name} · 资料阅读方法（GUIDE）\n\n\
+> 本文件是本学科包的说明书：人读是手册，喂给模型就是前置提示词的正文。\n\n\
+## 1. 这个包教什么、给谁用\n\n（两句话说明学科范围与目标学习者。）\n\n\
+## 2. 知识树怎么读\n\n知识点在 `tree/kc.json`，字段：`id`（包内唯一，永不复用）、`name`、`toc`（章节路径数组）、`difficulty`、`bloom`、`aliases`。规范见 `specs/subject-pack/1/SPEC.md`。\n\n\
+## 3. 题目怎么读\n\n每题一文件 `items/it_<id>.json`：`type`、`kc_ids`（≥1）、`stem`、`options`、`answer`/`answer_text`、`analysis`、`difficulty`、`origin`、`verification`。\n\n\
+## 4. 先修关系怎么读\n\n`tree/prereq.json` 每条边 {{from,to,strength,reason}}：`hard`=不会先修就学不会，`soft`=有帮助。先修图必须是 DAG（有环校验失败）。\n\n\
+## 5. 字段词典\n\n（本包自定义字段，若无写「无」。）\n\n\
+## 6. 一个完整示例\n\n某知识点 → 挂该知识点的题目 → 讲解素材 `material/<kc_id>.md`。\n"
+    )
+}
+
+/// 在 packs 目录下创建一个符合 subject-pack/1 的最小学科包骨架。
+pub fn scaffold_pack(
+    packs_dir: &str,
+    id: &str,
+    name: &str,
+    description: Option<&str>,
+    author: Option<&str>,
+    license: Option<&str>,
+) -> Result<Value, String> {
+    let dir = resolve_packs(packs_dir);
+    let id = id.trim();
+    let name = name.trim();
+    if !valid_subject_id(id) {
+        return Err("学科 id 需为小写反向域名式（如 my.chinese、chinese.junior）".to_string());
+    }
+    if name.is_empty() {
+        return Err("显示名不能为空".to_string());
+    }
+    let dest = dir.join(id);
+    if dest.exists() {
+        return Err(format!("学科包已存在：{id}"));
+    }
+    for sub in ["tree", "items", "material"] {
+        std::fs::create_dir_all(dest.join(sub)).map_err(|e| format!("创建目录失败: {e}"))?;
+    }
+    let meta = json!({
+        "id": id,
+        "name": name,
+        "version": "0.1.0",
+        "schema": "subject-pack/1",
+        "license": license.unwrap_or("CC-BY-SA-4.0"),
+        "author": author.unwrap_or(""),
+        "description": description.unwrap_or(""),
+        "depends": [],
+        "language": "zh-CN",
+        "presentation": ["teaching", "qa"],
+    });
+    let write = |rel: &str, content: &str| -> Result<(), String> {
+        std::fs::write(dest.join(rel), content).map_err(|e| format!("写入 {rel} 失败: {e}"))
+    };
+    write("subject.json", &format!("{}\n", serde_json::to_string_pretty(&meta).unwrap()))?;
+    write("tree/kc.json", "[]\n")?;
+    write("tree/prereq.json", "[]\n")?;
+    write("items/.gitkeep", "")?;
+    write("material/.gitkeep", "")?;
+    write("GUIDE.md", &guide_md(name))?;
+    Ok(json!({ "ok": true, "path": dest.display().to_string(), "pack": id, "name": name }))
+}
+
+#[cfg(test)]
+mod scaffold_tests {
+    use super::*;
+
+    fn tmp_root() -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "wordo-scaffold-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .subsec_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn scaffold_creates_valid_pack() {
+        let root = tmp_root();
+        let packs = root.join("packs");
+        std::fs::create_dir_all(&packs).unwrap();
+        let out = scaffold_pack(
+            packs.to_str().unwrap(),
+            "my.chinese",
+            "我的语文",
+            Some("测试用"),
+            Some("WORDO"),
+            None,
+        )
+        .expect("scaffold should succeed");
+        assert_eq!(out.get("ok").and_then(|v| v.as_bool()), Some(true));
+        let pack = packs.join("my.chinese");
+        assert!(pack.join("subject.json").is_file());
+        assert!(pack.join("GUIDE.md").is_file());
+        assert!(pack.join("tree/kc.json").is_file());
+        assert!(pack.join("tree/prereq.json").is_file());
+        assert!(pack.join("items").is_dir());
+        // 生成物应能被核心校验器接受（空包 0 error）
+        let report = crate::validate::validate_pack(&pack);
+        assert_eq!(report.error_count, 0, "scaffolded pack should have 0 errors");
+        // 重复创建应报错
+        assert!(scaffold_pack(packs.to_str().unwrap(), "my.chinese", "x", None, None, None).is_err());
+        // 非法 id 拒绝
+        assert!(scaffold_pack(packs.to_str().unwrap(), "BadId", "x", None, None, None).is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

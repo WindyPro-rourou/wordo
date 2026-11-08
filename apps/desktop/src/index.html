@@ -96,6 +96,36 @@
     </div>
   </div>
 
+  <!-- 新建学科弹窗（桌面居中 / 手机底部面板，复用 sheet 视觉语言） -->
+  <div id="new-subject-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="ns-title">
+    <div class="modal-panel" role="document">
+      <div class="modal-head">
+        <b id="ns-title">新建学科</b>
+        <button id="ns-close" class="btn btn-ghost" type="button" aria-label="关闭新建学科">关闭</button>
+      </div>
+      <form id="ns-form" class="ns-form" autocomplete="off" novalidate>
+        <div class="field">
+          <label for="ns-name">显示名 <span class="req" aria-hidden="true">*</span></label>
+          <input id="ns-name" type="text" placeholder="例如：初中语文" spellcheck="false" required aria-required="true" />
+        </div>
+        <div class="field">
+          <label for="ns-id">学科 id <span class="req" aria-hidden="true">*</span></label>
+          <input id="ns-id" type="text" placeholder="例如：chinese.junior / my.physics" spellcheck="false" autocapitalize="off" autocorrect="off" required aria-required="true" aria-describedby="ns-id-hint" />
+          <div class="field-hint" id="ns-id-hint">小写字母/数字开头，仅含小写字母、数字、点、连字符、下划线，如 <code>my.chinese</code></div>
+        </div>
+        <div class="field">
+          <label for="ns-desc">简介（可选）</label>
+          <textarea id="ns-desc" rows="2" placeholder="一句话说明这个学科教什么"></textarea>
+        </div>
+        <div class="ns-error" id="ns-error" role="alert"></div>
+        <div class="ns-actions">
+          <button class="btn btn-ghost" type="button" id="ns-cancel">取消</button>
+          <button class="btn" type="submit" id="ns-submit" disabled>创建学科</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

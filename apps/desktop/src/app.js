@@ -1,7 +1,11 @@
 /* WORDO 桌面壳 —— 前端逻辑（薄壳：全部能力在 wordo-core） */
 "use strict";
 
-const DEFAULT_PACKS_DIR = "F:/去中心化分布式跨平台自进化ai学习系统/packs";
+/* packs 目录：不再硬编码任何机器路径。空值交给后端解析出权威默认目录，
+   首次拿到后端返回的 packsDir 后写回输入框与 localStorage。 */
+const DEFAULT_PACKS_DIR = "";
+/* 学科 id 规则：小写字母/数字开头，仅含小写字母、数字、点、连字符、下划线（如 my.chinese / chinese） */
+const SUBJECT_ID_RE = /^[a-z0-9][a-z0-9._-]*$/;
 const { invoke } = window.__TAURI__.core;
 
 const state = {
@@ -23,6 +27,8 @@ const state = {
   chatMsg: "",
   /* 「我的」= 学习账本视图：state(user.md) / due(薄弱+今日队列) / sync(域同步结果) / msg(操作反馈) */
   me: { state: null, due: null, sync: null, review: null, msg: "", error: null, loading: false, busy: null, seq: 0, view: null },
+  /* 新建学科弹窗：进行中标志，防止重复提交 */
+  newSubjectBusy: false,
 };
 
 /* ══════════ 启动 ══════════ */
@@ -61,6 +67,17 @@ async function boot() {
   if (sc) sc.onclick = closeSubjectSheet;
   const sheet = document.getElementById("subject-sheet");
   if (sheet) sheet.addEventListener("click", (e) => { if (e.target === sheet) closeSubjectSheet(); });
+
+  // 新建学科弹窗：关闭 / 取消 / 点遮罩关闭 / 表单绑定
+  const nsModal = document.getElementById("new-subject-modal");
+  if (nsModal) {
+    const nsClose = document.getElementById("ns-close");
+    if (nsClose) nsClose.onclick = () => closeOverlay(nsModal);
+    const nsCancel = document.getElementById("ns-cancel");
+    if (nsCancel) nsCancel.onclick = () => closeOverlay(nsModal);
+    nsModal.addEventListener("click", (e) => { if (e.target === nsModal) closeOverlay(nsModal); });
+    bindNewSubjectForm();
+  }
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeSubjectSheet();
     // 首页数字快捷键：输入框为空时也生效（输入框非空时让位给打字）
@@ -119,11 +136,14 @@ async function loadConfig() {
 }
 
 async function refreshPacks() {
-  const dir = document.getElementById("packs-dir").value.trim();
-  localStorage.setItem("packsDir", dir);
+  const el = document.getElementById("packs-dir");
+  let dir = (el && el.value || "").trim();
   try {
     const res = await invoke("list_packs", { packsDir: dir });
     state.packs = res.packs || [];
+    // 输入为空时，采用后端解析出的权威 packs 目录（避免前端硬编码机器路径）
+    if (!dir && res && res.packsDir) { dir = res.packsDir; if (el) el.value = dir; }
+    try { localStorage.setItem("packsDir", dir); } catch {}
   } catch (e) {
     state.packs = [];
   }
@@ -193,13 +213,207 @@ function openSubjectSheet() {
   const s = document.getElementById("subject-sheet");
   if (!s) return;
   paintSubjectBar();
-  s.classList.remove("hidden");
-  document.body.classList.add("sheet-open");
+  openOverlay(s, { focusSel: "#sheet-close", bodyClass: "sheet-open" });
 }
 function closeSubjectSheet() {
   const s = document.getElementById("subject-sheet");
-  if (s) s.classList.add("hidden");
-  document.body.classList.remove("sheet-open");
+  closeOverlay(s, { bodyClass: "sheet-open" });
+}
+
+/* ══════════ 通用浮层（对话框 / 抽屉）：焦点管理 + Tab 限定 + Esc 关闭 ══════════ */
+let __overlay = null; // { el, handler, prevFocus, bodyClass }
+
+function overlayFocusable(el) {
+  if (!el) return [];
+  return Array.from(
+    el.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+  ).filter((x) => x.offsetParent !== null || x === document.activeElement);
+}
+
+function handleOverlayKey(e) {
+  if (!__overlay) return;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    closeOverlay(__overlay.el, { bodyClass: __overlay.bodyClass });
+    return;
+  }
+  if (e.key === "Tab") {
+    const f = overlayFocusable(__overlay.el);
+    if (!f.length) return;
+    const first = f[0];
+    const last = f[f.length - 1];
+    if (e.shiftKey && (document.activeElement === first || document.activeElement === __overlay.el)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+}
+
+function openOverlay(el, opts) {
+  if (!el) return;
+  const o = opts || {};
+  // 若已有别的浮层打开，先收起（保证同一时刻只有一个焦点陷阱）
+  if (__overlay && __overlay.el !== el) closeOverlay(__overlay.el, { bodyClass: __overlay.bodyClass });
+  __overlay = { el, handler: handleOverlayKey, prevFocus: document.activeElement, bodyClass: o.bodyClass || null };
+  el.classList.remove("hidden");
+  if (o.bodyClass) document.body.classList.add(o.bodyClass);
+  document.body.classList.add("overlay-open");
+  document.addEventListener("keydown", handleOverlayKey, true);
+  requestAnimationFrame(() => {
+    const t = o.focusSel ? el.querySelector(o.focusSel) : null;
+    const f = t || overlayFocusable(el)[0] || el;
+    if (f && f.focus) {
+      if (!f.hasAttribute("tabindex") && f === el) f.setAttribute("tabindex", "-1");
+      try { f.focus(); } catch (e) {}
+    }
+  });
+}
+
+function closeOverlay(el, opts) {
+  const o = opts || {};
+  if (!el) return;
+  el.classList.add("hidden");
+  if (o.bodyClass) document.body.classList.remove(o.bodyClass);
+  document.body.classList.remove("overlay-open");
+  document.removeEventListener("keydown", handleOverlayKey, true);
+  const prev = __overlay && __overlay.el === el ? __overlay.prevFocus : null;
+  __overlay = null;
+  if (prev && prev.focus) { try { prev.focus(); } catch (e) {} }
+}
+
+/* ══════════ 轻量 toast（成功/错误反馈，屏幕阅读器可读） ══════════ */
+let __toastTimer = null;
+function toast(msg, kind) {
+  let el = document.getElementById("wordo-toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "wordo-toast";
+    el.className = "toast";
+    el.setAttribute("role", "status");
+    el.setAttribute("aria-live", "polite");
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.toggle("err", kind === "err");
+  // 触发重排后再加 show，保证过渡生效
+  void el.offsetWidth;
+  el.classList.add("show");
+  clearTimeout(__toastTimer);
+  __toastTimer = setTimeout(() => el.classList.remove("show"), 4200);
+}
+
+/* ══════════ 新建学科向导 ══════════ */
+function openNewSubject() {
+  const modal = document.getElementById("new-subject-modal");
+  if (!modal) return;
+  const nameEl = document.getElementById("ns-name");
+  const idEl = document.getElementById("ns-id");
+  const descEl = document.getElementById("ns-desc");
+  const errEl = document.getElementById("ns-error");
+  const hintEl = document.getElementById("ns-id-hint");
+  if (nameEl) nameEl.value = "";
+  if (idEl) { idEl.value = ""; idEl.setAttribute("aria-invalid", "false"); }
+  if (descEl) descEl.value = "";
+  if (errEl) errEl.textContent = "";
+  if (hintEl) { hintEl.textContent = "小写字母/数字开头，仅含小写字母、数字、点、连字符、下划线（如 my.chinese 或 chinese）"; hintEl.className = "field-hint"; }
+  state.newSubjectBusy = false;
+  const submit = document.getElementById("ns-submit");
+  if (submit) { submit.disabled = true; submit.textContent = "创建学科"; }
+  openOverlay(modal, { focusSel: "#ns-name" });
+}
+
+/** 实时校验 + 提交按钮可用性 */
+function refreshNewSubjectValidation() {
+  const nameEl = document.getElementById("ns-name");
+  const idEl = document.getElementById("ns-id");
+  const hintEl = document.getElementById("ns-id-hint");
+  const submit = document.getElementById("ns-submit");
+  const errEl = document.getElementById("ns-error");
+  if (!nameEl || !idEl) return;
+  const id = idEl.value.trim();
+  const nameOk = !!nameEl.value.trim();
+  let idOk = false;
+  let msg = "小写字母/数字开头，仅含小写字母、数字、点、连字符、下划线（如 my.chinese 或 chinese）";
+  if (id) {
+    if (!SUBJECT_ID_RE.test(id)) { idOk = false; msg = "格式不对：需小写字母/数字开头，仅含小写字母、数字、点、连字符、下划线"; }
+    else if ((state.packs || []).some((p) => (p.subjectId || "").toLowerCase() === id.toLowerCase())) { idOk = false; msg = "该学科 id 已存在，换一个吧"; }
+    else { idOk = true; msg = "格式正确，可以使用"; }
+  }
+  if (hintEl) { hintEl.textContent = msg; hintEl.className = "field-hint " + (id ? (idOk ? "ok" : "err") : ""); }
+  idEl.setAttribute("aria-invalid", id && !idOk ? "true" : "false");
+  if (submit) submit.disabled = state.newSubjectBusy || !nameOk || !idOk;
+  if (errEl && errEl.textContent && (nameOk || idOk)) {
+    // 用户开始修正后，清掉上一次的提交级错误
+    errEl.textContent = "";
+  }
+}
+
+function bindNewSubjectForm() {
+  const form = document.getElementById("ns-form");
+  const nameEl = document.getElementById("ns-name");
+  const idEl = document.getElementById("ns-id");
+  if (!form || form.__bound) return;
+  form.__bound = true;
+  if (nameEl) nameEl.addEventListener("input", refreshNewSubjectValidation);
+  if (idEl) idEl.addEventListener("input", refreshNewSubjectValidation);
+  form.addEventListener("submit", (e) => { e.preventDefault(); submitNewSubject(); });
+}
+
+function showNewSubjectError(msg) {
+  const errEl = document.getElementById("ns-error");
+  if (errEl) errEl.textContent = msg;
+}
+
+async function submitNewSubject() {
+  if (state.newSubjectBusy) return;
+  const nameEl = document.getElementById("ns-name");
+  const idEl = document.getElementById("ns-id");
+  const descEl = document.getElementById("ns-desc");
+  const submit = document.getElementById("ns-submit");
+  const name = (nameEl && nameEl.value || "").trim();
+  const id = (idEl && idEl.value || "").trim();
+  const description = (descEl && descEl.value || "").trim();
+
+  if (!name) { showNewSubjectError("请填写显示名"); if (nameEl) nameEl.focus(); return; }
+  if (!SUBJECT_ID_RE.test(id)) { showNewSubjectError("学科 id 格式不对：需小写字母/数字开头，仅含小写字母、数字、点、连字符、下划线"); if (idEl) idEl.focus(); return; }
+  if ((state.packs || []).some((p) => (p.subjectId || "").toLowerCase() === id.toLowerCase())) {
+    showNewSubjectError("该学科 id 已存在，换一个吧");
+    if (idEl) idEl.focus();
+    return;
+  }
+
+  state.newSubjectBusy = true;
+  showNewSubjectError("");
+  if (submit) { submit.disabled = true; submit.textContent = "创建中…"; }
+
+  try {
+    const res = await invoke("scaffold_pack", { packsDir: packsDirValue(), id, name, description });
+    const createdName = (res && res.name) || name;
+    const modal = document.getElementById("new-subject-modal");
+    closeOverlay(modal);
+    await refreshPacks();
+    // 自动把新学科设为当前学科（不强行切换视图，保持用户所在页面）
+    const np = (state.packs || []).find((p) => (p.subjectId || "").toLowerCase() === id.toLowerCase());
+    const newPath = (res && res.path) || (np && np.path) || "";
+    if (newPath) {
+      try { state.current = await invoke("load_pack", { packPath: newPath }); } catch (e) {}
+    }
+    renderPackList();
+    renderChatList();
+    toast("已创建学科：" + createdName + "（可开始导入内容）");
+    if (state.tab === "settings") render();
+  } catch (e) {
+    showNewSubjectError("创建失败：" + readableErr(e));
+    toast("创建失败：" + readableErr(e), "err");
+  } finally {
+    state.newSubjectBusy = false;
+    if (submit) { submit.textContent = "创建学科"; }
+    refreshNewSubjectValidation();
+  }
 }
 
 
@@ -481,7 +695,7 @@ function renderChatList() {
       (c) => `<button class="chat-item ${c.id === state.currentChatId ? "active" : ""}" data-id="${esc(c.id)}">
         <span class="chat-item-t">${esc(c.title || "新对话")}</span>
         <span class="chat-item-m mono">${c.pack ? esc(c.pack) : "未定学科"} · ${c.count} 条</span>
-        <span class="chat-item-x" data-del="${esc(c.id)}" title="删除会话">×</span>
+        <span class="chat-item-x" data-del="${esc(c.id)}" role="button" aria-label="删除会话" title="删除会话">×</span>
       </button>`
     )
     .join("");
@@ -546,13 +760,11 @@ function openDrawer() {
   const d = document.getElementById("chat-drawer");
   if (!d) return;
   renderDrawerList();
-  d.classList.remove("hidden");
-  document.body.classList.add("drawer-open");
+  openOverlay(d, { focusSel: "#drawer-close", bodyClass: "drawer-open" });
 }
 function closeDrawer() {
   const d = document.getElementById("chat-drawer");
-  if (d) d.classList.add("hidden");
-  document.body.classList.remove("drawer-open");
+  closeOverlay(d, { bodyClass: "drawer-open" });
 }
 
 async function newChat() {
@@ -658,8 +870,12 @@ function welcomeChat() {
   chips.push("混合练 3 个薄弱点");
   return `<div class="chat-welcome">
     <div class="console-bar mono"><span class="dot"></span><span>wordo</span><span class="sep">·</span><span>新对话</span>${recap ? `<span class="console-bar-right">${esc(recap)}</span>` : ""}</div>
-    <h1 class="console-title">${greetingWord()}，今天想学点什么？<span class="caret">▌</span></h1>
-    <div class="console-sub">直接说就行——我会自己判断学科。也可以点下面的建议：</div>
+    <h1 class="console-title">欢迎，今天想学点什么？<span class="caret">▌</span></h1>
+    <div class="console-sub">选一个学科开始，或新建你自己的学科。</div>
+    <div class="welcome-cta">
+      <button class="btn" data-welcome-new>＋ 新建学科</button>
+      <button class="btn btn-ghost" data-welcome-subjects>看看已有学科</button>
+    </div>
     <div class="say-chips">${chips.map((t) => `<button class="say-chip" data-say="${esc(t)}">${esc(t)}</button>`).join("")}</div>
   </div>`;
 }
@@ -706,6 +922,10 @@ function renderChat(view) {
   }
   if (form) form.onsubmit = (e) => { e.preventDefault(); const t = (ta.value || "").trim(); if (t && !state.chatBusy) sendMessage(t); };
   view.querySelectorAll("[data-say]").forEach((b) => { b.onclick = () => sendMessage(b.dataset.say); });
+  const wNew = view.querySelector("[data-welcome-new]");
+  if (wNew) wNew.onclick = () => openNewSubject();
+  const wSubj = view.querySelector("[data-welcome-subjects]");
+  if (wSubj) wSubj.onclick = () => openSubjectSheet();
   bindQuiz(view);
   // 有新消息时滚到底
   const th = view.querySelector("#chat-thread");
@@ -1868,10 +2088,12 @@ function renderSettings(view) {
       <h2 class="settings-h2">教师视图</h2>
       <p class="settings-note muted">内容编排与校验（学生用不到，手机上也从这里进）</p>
       <div class="settings-links">
+        <button class="btn" id="s-new-subject">＋ 新建学科</button>
         <button class="btn btn-ghost" data-goto="items">题目清单</button>
         <button class="btn btn-ghost" data-goto="tree">知识树</button>
         <button class="btn btn-ghost" data-goto="report">校验报告</button>
       </div>
+      <p class="settings-note muted">新建学科会生成一个空学科包（含 subject.json / 知识树 / 目录），随后可导入题目与讲解。</p>
 
       <p class="settings-note muted">提示：NVIDIA NIM 的 Base URL 为 <code>https://integrate.api.nvidia.com/v1</code>，实测可用模型如 <code>deepseek-ai/deepseek-v4.1-flash</code>；本机也可走 magpie 网关 <code>http://127.0.0.1:3425/v1</code> + <code>auto/deepseek-v4.1-flash</code>（更快）。</p>
     </div>`;
@@ -1937,6 +2159,10 @@ function renderSettings(view) {
       setTab(b.dataset.goto);
     };
   });
+
+  // 新建学科入口
+  const nsBtn = view.querySelector("#s-new-subject");
+  if (nsBtn) nsBtn.onclick = () => openNewSubject();
 }
 
 /* ══════════ 题目 / 知识树 / 报告（沿用） ══════════ */

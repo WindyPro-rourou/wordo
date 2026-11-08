@@ -88,6 +88,22 @@ jobs:
           });
           "
 
+  # 3.5) 工具链自测：内容入库管线 / 极简节点桥 / 新建学科契约（纯 Node，零依赖）
+  tools:
+    name: tools (ingest + mininode + scaffold)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Content ingest pipeline test (教材/出卷/OCR → 知识树+题库 + 校验)
+        run: node tools/ingest/test.mjs
+      - name: Mininode bridge test (导出卡片集 → 设备作答 → 入库账本 → 校验/幂等)
+        run: node tools/mininode/test.mjs
+      - name: New-subject contract test (scaffold_pack 三端同契约)
+        run: node tools/preview/test-scaffold.mjs
+
   # 4) 桌面壳（Tauri2）：Linux 依赖较重，先作为「必须通过」的编译检查
   desktop:
     name: desktop shell (tauri build)

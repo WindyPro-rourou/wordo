@@ -25,6 +25,26 @@ fn load_pack(pack_path: String) -> Result<Value, String> {
     api::load_pack(&pack_path)
 }
 
+/// 新建学科：在 packs 目录下生成符合 subject-pack/1 的最小骨架（落实「允许用户新建学科」）
+#[tauri::command]
+fn scaffold_pack(
+    packs_dir: String,
+    id: String,
+    name: String,
+    description: Option<String>,
+    author: Option<String>,
+    license: Option<String>,
+) -> Result<Value, String> {
+    api::scaffold_pack(
+        &packs_dir,
+        &id,
+        &name,
+        description.as_deref(),
+        author.as_deref(),
+        license.as_deref(),
+    )
+}
+
 /* ══════════ 配置 ══════════ */
 
 #[tauri::command]
@@ -205,6 +225,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_packs,
             load_pack,
+            scaffold_pack,
             get_config,
             set_config,
             build_prompt,

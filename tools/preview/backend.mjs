@@ -132,6 +132,66 @@ export function load_pack(packPath) {
   return { meta, kcs, prereqs, items, materials, report };
 }
 
+/* ══════════ 新建学科（scaffold_pack，与 core::api::scaffold_pack 同契约） ══════════ */
+
+export function scaffoldPack(packsDir, args = {}) {
+  const dir = packsDir || state.packsDir;
+  const id = String(args.id || "").trim();
+  const name = String(args.name || "").trim();
+  const description = String(args.description || "");
+  const author = String(args.author || "");
+  const license = String(args.license || "CC-BY-SA-4.0");
+  if (!/^[a-z0-9][a-z0-9._-]*$/.test(id)) throw new Error("学科 id 只能用小写字母/数字开头，且仅含小写字母、数字、点、连字符、下划线（如 my.chinese、chinese.junior）");
+  if (!name) throw new Error("显示名不能为空");
+  const dest = path.join(dir, id);
+  if (exists(dest)) throw new Error(`学科包已存在：${id}`);
+  ensureDir(path.join(dest, "tree"));
+  ensureDir(path.join(dest, "items"));
+  ensureDir(path.join(dest, "material"));
+  const meta = { id, name, version: "0.1.0", schema: "subject-pack/1", license, author, description, depends: [], language: "zh-CN", presentation: ["teaching", "qa"] };
+  fs.writeFileSync(path.join(dest, "subject.json"), JSON.stringify(meta, null, 2) + "\n", "utf8");
+  fs.writeFileSync(path.join(dest, "tree", "kc.json"), "[]\n", "utf8");
+  fs.writeFileSync(path.join(dest, "tree", "prereq.json"), "[]\n", "utf8");
+  fs.writeFileSync(path.join(dest, "items", ".gitkeep"), "", "utf8");
+  fs.writeFileSync(path.join(dest, "material", ".gitkeep"), "", "utf8");
+  fs.writeFileSync(path.join(dest, "GUIDE.md"), guideTemplate(name), "utf8");
+  return { ok: true, path: dest, pack: id, name };
+}
+
+function guideTemplate(name) {
+  const lines = [
+    "# " + name + " · 资料阅读方法（GUIDE）",
+    "",
+    "> 本文件是本学科包的说明书：人读是手册，喂给模型就是前置提示词的正文。",
+    "",
+    "## 1. 这个包教什么、给谁用",
+    "",
+    "（两句话说明学科范围与目标学习者。）",
+    "",
+    "## 2. 知识树怎么读",
+    "",
+    "知识点在 `tree/kc.json`，字段：`id`（包内唯一，永不复用）、`name`、`toc`（章节路径数组）、`difficulty`、`bloom`、`aliases`。规范见 `specs/subject-pack/1/SPEC.md`。",
+    "",
+    "## 3. 题目怎么读",
+    "",
+    "每题一文件 `items/it_<id>.json`：`type`、`kc_ids`（≥1）、`stem`、`options`、`answer`/`answer_text`、`analysis`、`difficulty`、`origin`、`verification`。",
+    "",
+    "## 4. 先修关系怎么读",
+    "",
+    "`tree/prereq.json` 每条边 {from,to,strength,reason}：`hard`=不会先修就学不会，`soft`=有帮助。先修图必须是 DAG（有环校验失败）。",
+    "",
+    "## 5. 字段词典",
+    "",
+    "（本包自定义字段，若无写「无」。）",
+    "",
+    "## 6. 一个完整示例",
+    "",
+    "某知识点 → 挂该知识点的题目 → 讲解素材 `material/<kc_id>.md`。",
+    "",
+  ];
+  return lines.join("\n");
+}
+
 function kcIndex(packsDir) {
   const m = new Map();
   const dir = packsDir || state.packsDir;
@@ -833,6 +893,7 @@ export async function invoke(name, args = {}) {
   const domain = args.domain || state.domain;
   switch (name) {
     case "list_packs": return list_packs(packsDir);
+    case "scaffold_pack": return scaffoldPack(packsDir, args);
     case "load_pack": return load_pack(args.packPath || "");
     case "get_config": return getConfig();
     case "set_config": return setConfig(args.config || {});

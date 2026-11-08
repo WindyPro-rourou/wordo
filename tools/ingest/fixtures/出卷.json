@@ -1,0 +1,69 @@
+{
+  "kcs": [
+    { "name": "分数的意义", "toc": ["分数的世界", "分数的意义"] },
+    { "name": "分数的加减", "toc": ["分数的世界", "分数的加减"] },
+    { "name": "分数与小数", "toc": ["分数的世界", "分数与小数"] },
+    { "name": "分数的除法", "toc": ["分数的世界", "分数的除法"], "difficulty": 0.5, "bloom": "应用" }
+  ],
+  "items": [
+    {
+      "id": "it_frac_0001",
+      "kc": "分数的意义",
+      "type": "single_choice",
+      "stem": "把一个整体平均分成 4 份，其中的一份是（　）",
+      "options": [
+        { "key": "A", "text": "1/2" },
+        { "key": "B", "text": "1/4" },
+        { "key": "C", "text": "4" },
+        { "key": "D", "text": "1/8" }
+      ],
+      "answer": "B",
+      "analysis": "平均分成 4 份取 1 份即 1/4。选 C 是把「份数」当成了「数值」。",
+      "difficulty": 0.2
+    },
+    {
+      "id": "it_frac_0002",
+      "kc": 2,
+      "type": "single_choice",
+      "stem": "1/5 + 2/5 =（　）",
+      "options": [
+        { "key": "A", "text": "1/5" },
+        { "key": "B", "text": "3/10" },
+        { "key": "C", "text": "3/5" },
+        { "key": "D", "text": "2/5" }
+      ],
+      "answer": "C",
+      "analysis": "同分母相加，分母不变、分子相加：1/5+2/5=3/5。选 B 是错把分母也相加。",
+      "difficulty": 0.3
+    },
+    {
+      "id": "it_frac_0003",
+      "kc": "3",
+      "type": "judge",
+      "stem": "0.25 等于 1/4。",
+      "answer": "正确",
+      "analysis": "1/4 = 1 ÷ 4 = 0.25，故命题正确。",
+      "difficulty": 0.3
+    },
+    {
+      "id": "it_frac_0004",
+      "kc": "分数的除法",
+      "type": "single_choice",
+      "stem": "3/4 ÷ 2 =（　）",
+      "options": [
+        { "key": "A", "text": "3/8" },
+        { "key": "B", "text": "3/2" },
+        { "key": "C", "text": "6/4" },
+        { "key": "D", "text": "1/4" }
+      ],
+      "answer": "A",
+      "analysis": "分数除以整数等于乘以它的倒数：3/4 ÷ 2 = 3/4 × 1/2 = 3/8。",
+      "difficulty": 0.5
+    }
+  ],
+  "prereq": [
+    { "from": "分数的意义", "to": "分数的加减", "strength": "hard", "reason": "不理解分数的意义就无法理解分数加减" },
+    { "from": "分数的加减", "to": "分数与小数", "strength": "soft", "reason": "会分数运算有助于理解分数与小数的互化" },
+    { "from": "分数与小数", "to": "分数的除法", "strength": "hard", "reason": "分数除法需要扎实的分数与小数的数感" }
+  ]
+}

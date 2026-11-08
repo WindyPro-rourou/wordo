@@ -1,12 +1,18 @@
-﻿target/
+target/
 node_modules/
 dist/
 *.log
 .DS_Store
 Thumbs.db
 
+# 开发预览/自迭代产物（可由 seed/tests 重新生成，不入库）
 tools/preview/node_modules/
-tools/preview/domain/
+tools/preview/domain*/
 tools/preview/.config.json
 tools/preview/shots/
 tools/preview/report*.json
+tools/preview/ai-report.json
+tools/preview/glm-opinion-*.md
+
+# 内容入库临时目录
+tools/ingest/tmp/

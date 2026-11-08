@@ -1,0 +1,6 @@
+{
+  "name": "wordo-ingest",
+  "private": true,
+  "type": "module",
+  "bin": {}
+}

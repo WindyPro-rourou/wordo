@@ -852,3 +852,108 @@ header .subject-btn .subject-btn-label { font-family: var(--mono); font-size: 11
   #chat-send { min-width: 64px; min-height: 44px; }
   .composer textarea { min-height: 24px; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   16) 新建学科弹窗（桌面居中 / 手机底部面板）+ toast + 欢迎 CTA
+   ══════════════════════════════════════════════════════════════ */
+
+/* 欢迎态两个 CTA */
+.welcome-cta { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 18px; }
+.welcome-cta .btn { min-height: 42px; }
+@media (max-width: 640px) {
+  .welcome-cta { flex-direction: column; }
+  .welcome-cta .btn { width: 100%; min-height: 46px; }
+}
+
+/* 通用文本框（简介） */
+.field textarea {
+  width: 100%; padding: 9px 12px;
+  border: 1px solid var(--line); border-radius: 6px; background: #ffffff;
+  font-family: var(--sans); font-size: 14px; color: var(--ink);
+  resize: vertical; line-height: 1.5;
+}
+
+/* 弹窗容器 */
+.modal {
+  position: fixed; inset: 0; z-index: 80;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: rgba(20, 20, 20, 0.32);
+}
+.modal.hidden { display: none; }
+.modal-panel {
+  width: 100%; max-width: 460px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
+  padding: 22px 24px; max-height: calc(100dvh - 48px); overflow-y: auto;
+  animation: modal-pop 180ms var(--ease);
+}
+@keyframes modal-pop { from { transform: translateY(8px) scale(0.99); opacity: 0.7; } to { transform: none; opacity: 1; } }
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.modal-head b { font-family: var(--serif); font-size: 21px; font-weight: 500; letter-spacing: -0.01em; }
+.ns-form .field { margin: 16px 0; }
+.req { color: var(--p-red-tx); }
+.field-hint { margin-top: 6px; font-size: 12px; color: var(--ink-2); }
+.field-hint.ok { color: var(--p-green-tx); }
+.field-hint.err { color: var(--p-red-tx); }
+.ns-error { font-size: 13px; color: var(--p-red-tx); }
+.ns-error:not(:empty) { padding: 8px 12px; background: var(--p-red-bg); border-radius: 6px; margin-top: 6px; }
+.ns-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.ns-actions .btn { min-width: 96px; }
+@media (max-width: 640px) {
+  .modal { align-items: flex-end; padding: 0; }
+  .modal-panel {
+    width: 100%; max-width: none; border-radius: 16px 16px 0 0;
+    border-left: none; border-right: none; border-bottom: none;
+    padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
+    max-height: 90dvh; animation: sheet-up 180ms var(--ease);
+  }
+  .modal-head .btn { min-height: 44px; }
+  .modal .field input, .modal .field textarea { font-size: 16px; min-height: 46px; }
+  .ns-actions { position: sticky; bottom: 0; background: var(--card); padding-top: 8px; }
+  .ns-actions .btn { flex: 1 1 auto; min-height: 46px; }
+}
+
+/* toast */
+.toast {
+  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom));
+  transform: translate(-50%, 12px); z-index: 120;
+  max-width: min(92vw, 560px); background: #111111; color: #ffffff;
+  padding: 11px 18px; border-radius: 999px; font-size: 14px; line-height: 1.4;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  opacity: 0; pointer-events: none;
+  transition: opacity 200ms var(--ease), transform 200ms var(--ease);
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.err { background: var(--p-red-tx); }
+@media (max-width: 640px) { .toast { bottom: calc(74px + env(safe-area-inset-bottom)); font-size: 13px; } }
+
+/* 桌面端也让「学科选择」浮层可用（原样式只在手机端可见，导致桌面胶囊点不开） */
+@media (min-width: 641px) {
+  #subject-sheet:not(.hidden) {
+    display: flex; position: fixed; inset: 0; z-index: 60;
+    background: rgba(20, 20, 20, 0.28); align-items: center; justify-content: center; padding: 24px;
+  }
+  #subject-sheet .sheet-panel {
+    width: 100%; max-width: 440px; background: var(--card); border-radius: 14px;
+    padding: 20px 22px; max-height: 80vh; overflow-y: auto;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18); animation: modal-pop 180ms var(--ease);
+  }
+  #subject-sheet .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; font-size: 16px; }
+  #subject-sheet .sheet-item {
+    display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left;
+    padding: 12px 14px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--card); color: var(--ink); cursor: pointer;
+  }
+  #subject-sheet .sheet-item:hover { border-color: var(--ink-2); }
+  #subject-sheet .sheet-item.active { border-color: #111111; }
+  #subject-sheet .sheet-item-name { font-size: 15px; font-weight: 500; }
+  #subject-sheet .sheet-item-sub { color: var(--ink-2); font-size: 11px; }
+}
+
+/* 尊重系统「减少动态效果」设置 */
+@media (prefers-reduced-motion: reduce) {
+  .toast, .modal-panel { transition: none !important; animation: none !important; }
+  .reveal { transition: none !important; opacity: 1 !important; transform: none !important; }
+  .typing i, .caret, .skeleton .sk-line { animation: none !important; }
+  .btn, .cmd, .tab { transition: none !important; }
+}

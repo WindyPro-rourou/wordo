@@ -529,6 +529,14 @@ fn cmd_api(args: &[String]) -> ExitCode {
 
     let r: Result<Value, String> = match name.as_str() {
         "list_packs" => Ok(api::list_packs(&s("packsDir"))),
+        "scaffold_pack" => api::scaffold_pack(
+            &s("packsDir"),
+            &s("id"),
+            &s("name"),
+            os("description").as_deref(),
+            os("author").as_deref(),
+            os("license").as_deref(),
+        ),
         "load_pack" => api::load_pack(&s("packPath")),
         "get_config" => Ok(api::get_config(&cfg)),
         "set_config" => api::set_config(&cfg, a.get("config").cloned().unwrap_or_else(|| json!({}))),
