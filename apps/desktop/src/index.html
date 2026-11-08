@@ -4,6 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="theme-color" content="#f7f6f3" />
+  <!-- PWA / iPad 主屏安装（配合 LAN 预览即可获得接近原生的全屏体验；Tauri 原生壳会忽略这些） -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="WORDO" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <title>WORDO 学习系统</title>
   <link rel="stylesheet" href="style.css" />
 </head>

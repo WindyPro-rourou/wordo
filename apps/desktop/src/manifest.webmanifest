@@ -1,0 +1,16 @@
+{
+  "name": "WORDO 学习系统",
+  "short_name": "WORDO",
+  "description": "去中心化跨平台自进化 AI 学习系统",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f7f6f3",
+  "theme_color": "#f7f6f3",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
