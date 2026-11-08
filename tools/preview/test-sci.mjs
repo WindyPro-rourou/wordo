@@ -8,7 +8,7 @@ const EDGE = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
 const PORT = 4310;
 const DOMAIN = path.join(HERE, "domain");
 const b = await import("./backend.mjs");
-b.state.packsDir = "F:/去中心化分布式跨平台自进化ai学习系统/packs";
+b.state.packsDir = path.resolve(HERE, "../../packs");
 b.state.domain = DOMAIN;
 b.state.configPath = path.join(HERE, ".config.json");
 

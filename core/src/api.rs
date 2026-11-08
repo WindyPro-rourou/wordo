@@ -409,6 +409,32 @@ fn guide_md(name: &str) -> String {
     )
 }
 
+fn slugify(s: &str) -> String {
+    let mut out = String::new();
+    for ch in s.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            out.push('_');
+        }
+    }
+    let t = out.trim_matches('_').to_string();
+    if t.is_empty() {
+        "subject".to_string()
+    } else {
+        t
+    }
+}
+
+fn starter_material(kc_id: &str, name: &str) -> String {
+    format!(
+        "---\nkc_id: {kc_id}\nstyles: [intuitive, formal]\n---\n# {name}\n\n\
+## 直观理解\n这是新建学科时自动生成的示例讲解，用来验证「讲解→出题→判分→复习」闭环。你可以在 material/ 下替换成真实内容。\n\n\
+## 规范表述\n（在这里写这个知识点的严谨定义。）\n\n\
+## 常见误解\n- （列出学生常见错误。）\n"
+    )
+}
+
 /// 在 packs 目录下创建一个符合 subject-pack/1 的最小学科包骨架。
 pub fn scaffold_pack(
     packs_dir: &str,
@@ -449,13 +475,43 @@ pub fn scaffold_pack(
     let write = |rel: &str, content: &str| -> Result<(), String> {
         std::fs::write(dest.join(rel), content).map_err(|e| format!("写入 {rel} 失败: {e}"))
     };
+    // 内置一条示例内容：新建即可跑通「讲解→出题→判分→复习」闭环（示例标注「可删」）。
+    let slug = slugify(id);
+    let kc_id = format!("kc_{slug}_0001");
+    let item_id = format!("it_{slug}_0001");
+    let kc_name = "示例知识点（可删）";
+    let kc = json!([{
+        "id": kc_id.clone(),
+        "name": kc_name,
+        "toc": ["示例章节"],
+        "difficulty": 0.3,
+        "bloom": "理解",
+        "aliases": ["示例"]
+    }]);
+    let item = json!({
+        "id": item_id.clone(),
+        "type": "single_choice",
+        "kc_ids": [kc_id.clone()],
+        "stem": "这是一道示例题：下面哪个是占位用的正确答案？",
+        "options": [
+            { "key": "A", "text": "A（示例正确答案）" },
+            { "key": "B", "text": "B" },
+            { "key": "C", "text": "C" },
+            { "key": "D", "text": "D" }
+        ],
+        "answer": "A",
+        "analysis": "新建学科自动生成的示例题；导入真实题目后可在 items/ 下删除本文件。",
+        "difficulty": 0.2,
+        "origin": { "source_type": "generated", "source_ref": "starter", "redistributable": true },
+        "verification": { "answer_checked_by": "human", "human_reviewed": true }
+    });
     write("subject.json", &format!("{}\n", serde_json::to_string_pretty(&meta).unwrap()))?;
-    write("tree/kc.json", "[]\n")?;
+    write("tree/kc.json", &format!("{}\n", serde_json::to_string_pretty(&kc).unwrap()))?;
     write("tree/prereq.json", "[]\n")?;
-    write("items/.gitkeep", "")?;
-    write("material/.gitkeep", "")?;
+    write(&format!("items/{item_id}.json"), &format!("{}\n", serde_json::to_string_pretty(&item).unwrap()))?;
+    write(&format!("material/{kc_id}.md"), &starter_material(&kc_id, kc_name))?;
     write("GUIDE.md", &guide_md(name))?;
-    Ok(json!({ "ok": true, "path": dest.display().to_string(), "pack": id, "name": name }))
+    Ok(json!({ "ok": true, "path": dest.display().to_string(), "pack": id, "name": name, "starter": true }))
 }
 
 #[cfg(test)]

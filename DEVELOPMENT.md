@@ -323,3 +323,20 @@ R1 glm-5.3F + 仓库级评审（deepseek 子智能体）｜R2 学习科学（glm
 - **连续两次答错 → 换种讲法重讲**：同一知识点连续 2 错时，界面提供「换种讲法讲一遍」入口（防「错→刷题→更错」死循环）。
 - **里程碑状态**：M3–M9.1 全部完成；**Rust 侧已由 GitHub Actions 编译 + 单测验证**（见 `.github/workflows/ci.yml` 的 core 作业），此前「Rust 未经编译」的缺口已闭合；桌面运行时（WebView2）行为仍以 Chromium 无头验证为准。
 - 后续（M10+，见 `docs/路线图.md`）：内容入库管线 `tools/ingest`、新学科向导（`scaffold_pack`）、最小节点桥 `tools/mininode`、多端构建说明。
+
+## M10 · v1.1 交付（文档对齐 + 新建学科 + 入库管线 + 极简节点 + 可移植性）
+
+**主题：把「能跑」变成「可交付、别人能上手」。** 全量改动经无头浏览器 + 接口测试 + CI（5 作业全绿，含 Tauri 桌面壳编译）。
+
+1. **文档与现状对齐**：README 顶部改为「已发布 v1.0.0 可运行产品」；新增 `docs/{快速开始,架构,多端构建指南,同步指南,路线图}.md`；DEVELOPMENT 状态横幅与 M9.1/M10。
+2. **新建学科（scaffold_pack）**：`core::api::scaffold_pack` + Tauri 命令 + CLI `api` + 预览后端四端同契约；生成**含最小示例内容**（1 知识点 + 1 题 + 讲解，标注「可删」）的合规骨架，新建即可跑通闭环。前端在设置「教师视图」与欢迎态提供向导（无障碍浮层、实时 id 校验、焦点管理）。
+3. **内容入库管线 `tools/ingest`**：教材 md / 出卷 JSON / OCR 文本 → 知识树 + 题库；纯 JS 复刻 `validate.rs`（含 DAG/覆盖率/悬空）+ 先算后写 + 幂等；`test.mjs` 端到端全绿（真实两包 0 错误）。
+4. **极简节点桥 `tools/mininode` + `embed/esp32-node`**：导出卡片集 → 设备作答（`answers.jsonl`）→ 入库补 seq → 校验；落实「每个设备享受类似功能」。固件为**参考草图，未上机**。
+5. **可移植性修复（重要）**：删除前端硬编码机器路径（原 `DEFAULT_PACKS_DIR` 指向本机 `F:/…/packs`）；改由 `core::api::resolve_packs` 解析默认目录（环境变量 / 可执行旁 / 相对开发目录）；预览/CLI 后端 `list_packs` 回传权威绝对目录供前端采用；dev 测试脚本去除硬编码路径。
+6. **今日页概览条**：今日目标 + 预计分钟 + 「继续复习 / 学新内容」主按钮（评审建议）。
+7. **多模型评审**：6 视角 × `glm-5.3-flash`/`kimi-k3.1-pro`/`deepseek-v4.1-flash`（kimi 多数超时），综合与处置见 `docs/评审/2026-11-08-v1.1-多模型评审综合.md`；采纳项落地、其余入路线图。
+
+### 验证
+- `shoot`（6 视口 × 对话/今日/设置）issues = []；`interact` errors = []；新建学科真实端点 E2E 通过（写到正确 packs 目录、重复/非法拦截、360 不溢出、焦点归还）。
+- `tools/ingest/test.mjs`、`tools/mininode/test.mjs`、`tools/preview/test-scaffold.mjs` 全绿（已加入 CI 的 `tools` 作业）。
+- CI 5 作业全绿：core（编译+测试，含 scaffold 单测）/ packs / frontend / tools / desktop(Tauri build)。

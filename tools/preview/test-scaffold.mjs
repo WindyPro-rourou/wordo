@@ -31,7 +31,8 @@ try {
   assert(found && found.errors === 0, `新学科应有 0 error，实际 ${found && found.errors}`);
 
   const lp = await invoke("load_pack", { packPath: dir });
-  assert(Array.isArray(lp.kcs) && lp.kcs.length === 0, "空包 kcs 应为空数组");
+  assert(Array.isArray(lp.kcs) && lp.kcs.length >= 1, "starter 应至少含 1 个知识点（示例）");
+  assert(Array.isArray(lp.items) && lp.items.length >= 1, "starter 应至少含 1 道题（示例）");
 
   // 重复创建应报错
   let dupErr = null;

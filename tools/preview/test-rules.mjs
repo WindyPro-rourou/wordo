@@ -3,7 +3,7 @@ import path from "node:path";
 import url from "node:url";
 const HERE=path.dirname(url.fileURLToPath(import.meta.url));
 const b=await import("./backend.mjs");
-b.state.packsDir="F:/去中心化分布式跨平台自进化ai学习系统/packs";
+b.state.packsDir = path.resolve(HERE, "../../packs");
 b.state.domain=path.join(HERE,"domain-rules");
 b.state.configPath=path.join(HERE,".config.json");
 const R={};

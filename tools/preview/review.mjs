@@ -5,7 +5,7 @@ import path from "node:path";
 import url from "node:url";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
-const REPO = path.resolve(HERE, "../../..");
+const REPO = path.resolve(HERE, "../..");
 const H = process.env.DSH_HOME;
 const KEY = (fs.readFileSync(path.join(H, ".env"), "utf8").match(/^MAGPIE_GATEWAY_KEY=(.*)$/m) || [])[1].trim();
 const BASE = "http://127.0.0.1:3425/v1";

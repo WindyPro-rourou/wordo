@@ -957,3 +957,24 @@ header .subject-btn .subject-btn-label { font-family: var(--mono); font-size: 11
   .typing i, .caret, .skeleton .sk-line { animation: none !important; }
   .btn, .cmd, .tab { transition: none !important; }
 }
+
+/* 今日概览条：目标 + 预计耗时 + 继续入口 */
+.me-overview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 6px 0 16px;
+  padding: 12px 14px;
+  background: #fbfaf7;
+  border: 1px solid #e7e3da;
+  border-radius: 12px;
+}
+.me-overview .me-ov-main { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.me-overview .me-ov-main b { font-family: Georgia, "Times New Roman", "Songti SC", serif; font-size: 15px; }
+.me-overview .btn { min-height: 38px; }
+@media (max-width: 640px) {
+  .me-overview { flex-direction: column; align-items: stretch; }
+  .me-overview .btn { width: 100%; min-height: 44px; }
+}

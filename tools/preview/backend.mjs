@@ -150,12 +150,35 @@ export function scaffoldPack(packsDir, args = {}) {
   ensureDir(path.join(dest, "material"));
   const meta = { id, name, version: "0.1.0", schema: "subject-pack/1", license, author, description, depends: [], language: "zh-CN", presentation: ["teaching", "qa"] };
   fs.writeFileSync(path.join(dest, "subject.json"), JSON.stringify(meta, null, 2) + "\n", "utf8");
-  fs.writeFileSync(path.join(dest, "tree", "kc.json"), "[]\n", "utf8");
+  // 内置一条示例内容：新建即可跑通闭环（示例标注「可删」）
+  const slug = slugify(id);
+  const kcId = `kc_${slug}_0001`;
+  const itemId = `it_${slug}_0001`;
+  const kcName = "示例知识点（可删）";
+  const kc = [{ id: kcId, name: kcName, toc: ["示例章节"], difficulty: 0.3, bloom: "理解", aliases: ["示例"] }];
+  const item = {
+    id: itemId, type: "single_choice", kc_ids: [kcId],
+    stem: "这是一道示例题：下面哪个是占位用的正确答案？",
+    options: [{ key: "A", text: "A（示例正确答案）" }, { key: "B", text: "B" }, { key: "C", text: "C" }, { key: "D", text: "D" }],
+    answer: "A", analysis: "新建学科自动生成的示例题；导入真实题目后可在 items/ 下删除本文件。", difficulty: 0.2,
+    origin: { source_type: "generated", source_ref: "starter", redistributable: true },
+    verification: { answer_checked_by: "human", human_reviewed: true },
+  };
+  fs.writeFileSync(path.join(dest, "tree", "kc.json"), JSON.stringify(kc, null, 2) + "\n", "utf8");
   fs.writeFileSync(path.join(dest, "tree", "prereq.json"), "[]\n", "utf8");
-  fs.writeFileSync(path.join(dest, "items", ".gitkeep"), "", "utf8");
-  fs.writeFileSync(path.join(dest, "material", ".gitkeep"), "", "utf8");
+  fs.writeFileSync(path.join(dest, "items", `${itemId}.json`), JSON.stringify(item, null, 2) + "\n", "utf8");
+  fs.writeFileSync(path.join(dest, "material", `${kcId}.md`), starterMaterial(kcId, kcName), "utf8");
   fs.writeFileSync(path.join(dest, "GUIDE.md"), guideTemplate(name), "utf8");
-  return { ok: true, path: dest, pack: id, name };
+  return { ok: true, path: dest, pack: id, name, starter: true };
+}
+
+function slugify(s) {
+  const t = String(s).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return t || "subject";
+}
+
+function starterMaterial(kcId, name) {
+  return `---\nkc_id: ${kcId}\nstyles: [intuitive, formal]\n---\n# ${name}\n\n## 直观理解\n这是新建学科时自动生成的示例讲解，用来验证「讲解→出题→判分→复习」闭环。你可以在 material/ 下替换成真实内容。\n\n## 规范表述\n（在这里写这个知识点的严谨定义。）\n\n## 常见误解\n- （列出学生常见错误。）\n`;
 }
 
 function guideTemplate(name) {

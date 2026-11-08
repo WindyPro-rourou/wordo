@@ -1731,6 +1731,27 @@ function paintMe(view) {
       ${st && st.path ? `<div class="me-path mono muted" title="${esc(st.path)}">user.md：${esc(tail(st.path))}</div>` : ""}
     </div>`;
 
+  // 今日概览条：一眼看到「今天要做多久、从哪开始」（评审建议：今日页缺目标/预计耗时/继续入口）
+  {
+    const planArr = state.me.plan || [];
+    const todoCount = planArr.filter((t) => !t.done).length;
+    const nextTarget = due[0] || weak[0] || null;
+    const estMin = Math.max(0, due.length * 2 + Math.max(0, weak.length - due.length) * 2);
+    const parts = [];
+    if (due.length) parts.push(`到期复习 ${due.length}`);
+    if (weak.length) parts.push(`薄弱 ${weak.length}`);
+    if (todoCount) parts.push(`计划 ${todoCount}`);
+    const summary = parts.length ? parts.join(" · ") + (estMin ? ` · 预计约 ${estMin} 分钟` : "") : "今天没有硬性任务，学点新内容吧";
+    html += `<div class="me-overview">
+      <div class="me-ov-main"><b>今日目标</b><span class="mono muted">${esc(summary)}</span></div>
+      ${
+        nextTarget
+          ? `<button class="btn me-go" data-pack="${esc(nextTarget.pack || "")}" data-kc="${esc(nextTarget.kc_id)}">继续复习「${esc(nextTarget.kc_name || nextTarget.kc_id)}」</button>`
+          : `<button class="btn" id="me-new">学点新内容</button>`
+      }
+    </div>`;
+  }
+
   if (state.me.error) html += `<div class="me-err">${esc(state.me.error)}</div>`;
   if (state.me.msg) html += `<div class="me-msg">${esc(state.me.msg)}</div>`;
 
@@ -1842,6 +1863,8 @@ function paintMe(view) {
   if (bRev) bRev.onclick = runMeReview;
   const bRep = view.querySelector("#me-report");
   if (bRep) bRep.onclick = runMeReport;
+  const bNew = view.querySelector("#me-new");
+  if (bNew) bNew.onclick = () => setTab("chat");
   view.querySelectorAll(".me-go").forEach((b) => {
     b.onclick = () => startReview(b.dataset.pack, b.dataset.kc);
   });
